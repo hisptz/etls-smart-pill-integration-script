@@ -1,0 +1,34 @@
+{
+  "name": "node-script-template",
+  "description": "A node script template for scripts used to interact with DHIS2 API",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "async": "^3.2.4",
+    "axios": "^1.4.0",
+    "commander": "^10.0.1",
+    "dotenv": "^16.0.3",
+    "lodash": "^4.17.21",
+    "luxon": "^3.3.0",
+    "winston": "^3.8.2"
+  },
+  "scripts": {
+    "hello": "ts-node src/index.ts say-hi --name 'HISP Tanzania'",
+    "dhis2-info": "ts-node src/index.ts dhis2-info",
+    "build": "webpack",
+    "postbuild": "./package.sh"
+  },
+  "devDependencies": {
+    "@types/async": "^3.2.20",
+    "@types/node": "^20.2.4",
+    "bestzip": "^2.2.1",
+    "rimraf": "^5.0.1",
+    "ts-loader": "^9.4.3",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4",
+    "webpack": "^5.84.1",
+    "webpack-cli": "^5.1.1",
+    "webpack-node-externals": "^3.0.0"
+  }
+}
