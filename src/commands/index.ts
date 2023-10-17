@@ -1,19 +1,57 @@
-import {Command} from "commander";
-import appDetails from "../../package.json"
+import { Command } from "commander";
+import { config } from "dotenv";
+import express, { Express } from "express";
 import logger from "../logging";
-import {printDHIS2Info} from "../clients/sysInfo";
+import { Duration } from "../types";
 
+import wisePillRoutes, { authenticate } from "../services/wise-pill-api.routes";
+import { startIntegrationProcess } from "../services/integration.service";
+
+config();
 const program = new Command();
 
-program.name("hello-dhis2-script").description("An example program. Delete this when using the template").version(appDetails.version);
+program
+  .command("start-integration")
+  .description("")
+  .option(
+    "-s --startDate <startDate>",
+    "Start date for script coverage in DD-MM-YYYY"
+  )
+  .option(
+    "-e --endDate <endDate>",
+    "End date for script coverage in DD-MM-YYYY"
+  )
+  .action(async ({ startDate, endDate }: Duration) => {
+    try {
+      await startIntegrationProcess({ startDate, endDate });
+    } catch (error: any) {
+      logger.error(error.toString());
+    }
+  });
 
-program.command("say-hi").option("-n --name <name>", "The name of the user").action((args) => {
-    const {name} = args ?? {}
-    //Here you can call any of your functions to do what is necessary. Use the args to access the argument object as specified on the options
-    logger.info(`Hello ${name}, Welcome to the dhis2-node-script`)
-})
+program
+  .command("start-api-server")
+  .description("Initialization of the server for Wisepill integration")
+  .action(() => {
+    const app: Express = express();
+    const port = process.env.PORT ?? 3000;
+    try {
+      app.use(express.json());
+      app.use(express.urlencoded({ extended: true }));
 
-program.command(`dhis2-info`).description("Print out connected DHIS2 instance information").action(async () => {
-    await printDHIS2Info()
-})
+      if (process.env.SECRET_KEY) {
+        app.use(authenticate);
+      }
+
+      app.use("/api", wisePillRoutes);
+
+      app.listen(port, () => {
+        logger.info(
+          `⚡️[server]: Server is running at http://localhost:${port}`
+        );
+      });
+    } catch (error: any) {
+      logger.error(error.toString());
+    }
+  });
 export default program;
