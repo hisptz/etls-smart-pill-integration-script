@@ -1,6 +1,6 @@
 {
-  "name": "node-script-template",
-  "description": "A node script template for scripts used to interact with DHIS2 API",
+  "name": "etls-smart-pill-integration-script",
+  "description": "A node script for integration between DHIS2 and WisePill API",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
@@ -8,21 +8,25 @@
     "async": "^3.2.4",
     "axios": "^1.4.0",
     "commander": "^10.0.1",
-    "dotenv": "^16.0.3",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "lodash": "^4.17.21",
     "luxon": "^3.3.0",
     "winston": "^3.8.2"
   },
   "scripts": {
-    "hello": "ts-node src/index.ts say-hi --name 'HISP Tanzania'",
-    "dhis2-info": "ts-node src/index.ts dhis2-info",
+    "start-api-server": "nodemon --exec ts-node src/index.ts start-api-server",
+    "start-integration": "ts-node src/index.ts start-integration",
     "build": "webpack",
     "postbuild": "./package.sh"
   },
   "devDependencies": {
     "@types/async": "^3.2.20",
-    "@types/node": "^20.2.4",
+    "@types/express": "^4.17.19",
+    "@types/node": "^20.8.6",
     "bestzip": "^2.2.1",
+    "concurrently": "^8.2.1",
+    "nodemon": "^3.0.1",
     "rimraf": "^5.0.1",
     "ts-loader": "^9.4.3",
     "ts-node": "^10.9.1",
