@@ -8,6 +8,7 @@ import {
   DEVICE_LINKED,
   DEVICE_UNAVAILABLE,
 } from "../constants";
+import { createEpisodeSchema } from "../schema";
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const secretKey =
@@ -79,9 +80,18 @@ router.get("/events", (req: Request, res: Response) => {});
 // For fetching device list
 router.get("/devices", async (req: Request, res: Response) => {});
 
+// For unassigning device
+router.post("/devices/unassign", async (req: Request, res: Response) => {});
+
 // For assigning device
 router.post("/devices/assign", async (req: Request, res: Response) => {
-  // TODO validate body
+  //validate schema
+  const { error: bodyValidationError } = createEpisodeSchema.validate(req.body);
+  if (bodyValidationError) {
+    return res.status(400).json({
+      error: bodyValidationError.details.map((error) => error.message),
+    });
+  }
   const { imei, patientId } = req.body;
 
   // Finding device
@@ -110,12 +120,10 @@ router.post("/devices/assign", async (req: Request, res: Response) => {
         Result: deviceAssigmnetResult,
       }: any = data;
       if (deviceAssignmentCode === 0) {
-        res
-          .status(201)
-          .send({
-            status: 201,
-            message: `Device ${imei} assigned to ${patientId}`,
-          });
+        res.status(201).send({
+          status: 201,
+          message: `Device ${imei} assigned to ${patientId}`,
+        });
       } else {
         res.status(409).send({ message: deviceAssigmnetResult });
       }
