@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { DateTime } from "luxon";
 import wisePillClient from "../clients/wise-pill";
 import { Device } from "../types";
 import {
@@ -35,7 +36,6 @@ router.get("/deviceDetails", async (req: Request, res: Response) => {
     `devices/getDevices.php?device_imei=${imei}`
   );
   if (status === 200) {
-    console.log(data);
     const { Result, ResultCode, records } = data;
     if (parseInt(ResultCode) >= 100) {
       res.status(409).send({ message: Result, code: ResultCode });
@@ -70,9 +70,6 @@ router.get("/deviceDetails", async (req: Request, res: Response) => {
   }
 });
 
-// For assigning device
-router.post("/devices/assign", (req: Request, res: Response) => {});
-
 // For setting device alarm
 router.post("/alarms", (req: Request, res: Response) => {});
 
@@ -81,5 +78,58 @@ router.get("/events", (req: Request, res: Response) => {});
 
 // For fetching device list
 router.get("/devices", async (req: Request, res: Response) => {});
+
+// For assigning device
+router.post("/devices/assign", async (req: Request, res: Response) => {
+  // TODO validate body
+  const { imei, patientId } = req.body;
+
+  // Finding device
+  const availableStatus = 2;
+  const findDeviceUrl = `devices/findDevice?device_status=${availableStatus}&input=${imei}`;
+  const { data } = await wisePillClient.get(findDeviceUrl);
+  const { status: deviceStatus }: any = data;
+
+  if (deviceStatus === 0) {
+    // Creating Episode
+    const date = DateTime.now().format("YYYY-MM-DD");
+    const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
+    const { data } = await wisePillClient.post(createEpisodeUrl);
+    const {
+      ResultCode: creatEpisodeResultCode,
+      Result: message,
+      episode_id: episodeId,
+    }: any = data;
+
+    if (creatEpisodeResultCode === 0 && episodeId) {
+      // Assigning episode to device
+      const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${imei}`;
+      const { data } = await wisePillClient.put(assignDeviceUrl);
+      const {
+        ResultCode: deviceAssignmentCode,
+        Result: deviceAssigmnetResult,
+      }: any = data;
+      if (deviceAssignmentCode === 0) {
+        res
+          .status(201)
+          .send({
+            status: 201,
+            message: `Device ${imei} assigned to ${patientId}`,
+          });
+      } else {
+        res.status(409).send({ message: deviceAssigmnetResult });
+      }
+    } else {
+      res.status(409).send({
+        message:
+          creatEpisodeResultCode === 1
+            ? `Episode already exist for ${imei}`
+            : message ?? `Failed to create Episode for ${imei}`,
+      });
+    }
+  } else {
+    res.status(404).send({ message: "Device not found" });
+  }
+});
 
 export default router;
