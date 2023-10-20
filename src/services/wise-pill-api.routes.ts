@@ -8,7 +8,8 @@ import {
   DEVICE_LINKED,
   DEVICE_UNAVAILABLE,
 } from "../constants";
-import { createEpisodeSchema } from "../schema";
+import { addAlarmSchema, createEpisodeSchema } from "../schema";
+import { binaryToDecimal } from "../helpers";
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const secretKey =
@@ -71,18 +72,6 @@ router.get("/deviceDetails", async (req: Request, res: Response) => {
   }
 });
 
-// For setting device alarm
-router.post("/alarms", (req: Request, res: Response) => {});
-
-// For fetching device events
-router.get("/events", (req: Request, res: Response) => {});
-
-// For fetching device list
-router.get("/devices", async (req: Request, res: Response) => {});
-
-// For unassigning device
-router.post("/devices/unassign", async (req: Request, res: Response) => {});
-
 // For assigning device
 router.post("/devices/assign", async (req: Request, res: Response) => {
   //validate schema
@@ -139,5 +128,59 @@ router.post("/devices/assign", async (req: Request, res: Response) => {
     res.status(404).send({ message: "Device not found" });
   }
 });
+
+// For setting device alarm
+router.post("/alarms", async (req: Request, res: Response) => {
+  // validate the body
+  const { error: bodyValidationError } = addAlarmSchema.validate(req.body);
+  if (bodyValidationError) {
+    return res.status(400).json({
+      error: bodyValidationError.details.map((error) => error.message),
+    });
+  }
+
+  const { alarm, refillAlarm, imei, days } = req.body;
+
+  // If there is alarm to be set
+  if (alarm) {
+    const alarmDays = days ? `&alarm_days=${binaryToDecimal(days)}` : "";
+    const { data } = await wisePillClient.put(
+      `devices/setAlarm?refill_alarm=1&alarm_time=${alarm}&device_imei=${imei}${alarmDays}`
+    );
+    const { ResultCode: alarmCode, Result: alarmResult } = data;
+    if (alarmCode >= 100) {
+      return res.status(409).json({
+        status: 409,
+        message: `Alarm for ${imei} could not be set. ${alarmResult}`,
+      });
+    }
+  }
+
+  // If there is refill alarm to be set
+  if (refillAlarm) {
+    const { data } = await wisePillClient.put(
+      `devices/setRefillAlarm?refill_alarm=1&refill_alarm_datetime=${refillAlarm}&device_imei=${imei}`
+    );
+    const { ResultCode: refillAlarmCode, Result: refillAlarmResult } = data;
+    if (refillAlarmCode >= 100) {
+      return res.status(409).json({
+        status: 409,
+        message: `Refill alarm for ${imei} could not be set. ${refillAlarmResult}`,
+      });
+    }
+  }
+
+  if (!refillAlarm && !alarm) {
+    return res
+      .status(409)
+      .json({ status: 409, message: "No alarm was specifiied" });
+  }
+});
+
+// For fetching device list
+router.get("/devices", async (req: Request, res: Response) => {});
+
+// For unassigning device
+router.post("/devices/unassign", async (req: Request, res: Response) => {});
 
 export default router;
