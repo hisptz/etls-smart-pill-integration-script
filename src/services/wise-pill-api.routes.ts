@@ -9,6 +9,7 @@ import {
   find,
   compact,
   orderBy,
+  reduce,
   first,
 } from "lodash";
 import wisePillClient from "../clients/wise-pill";
@@ -214,8 +215,13 @@ router.get("/devices", async (req: Request, res: Response) => {
             );
             devicesMergedWithRecords.push({
               ...(device ?? {}),
-              // TODO handle well total_episode_days attribute by sum-reducing the previous days
               ...first(orderBy(episodes, ["last_seen"], ["desc"])),
+              total_device_days: reduce(
+                episodes,
+                (totalDays: number, { total_device_days }) =>
+                  parseInt(total_device_days) + totalDays,
+                0
+              ),
             });
           }
         );
