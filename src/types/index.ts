@@ -3,12 +3,16 @@ export interface Duration {
   endDate?: string;
 }
 
-export interface Device {
-  alarmTime: string;
-  refillAlarm: string;
+export interface DeviceDetails {
+  alarmTime?: string;
+  refillAlarm?: string;
   batteryLevel: number;
   lastOpened: string;
   lastHeartBeat: string;
   deviceStatus: string;
-  daysDeviceInUse?: number;
+}
+
+export interface Device extends DeviceDetails {
+  daysDeviceInUse: number;
+  imei: string;
 }

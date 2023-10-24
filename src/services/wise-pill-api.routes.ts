@@ -12,15 +12,13 @@ import {
   first,
 } from "lodash";
 import wisePillClient from "../clients/wise-pill";
-import { Device } from "../types";
-import {
-  DAMAGED_OR_LOST,
-  DEVICE_AVAILABLE,
-  DEVICE_LINKED,
-  DEVICE_UNAVAILABLE,
-} from "../constants";
+import { DeviceDetails } from "../types";
 import { addAlarmSchema, createEpisodeSchema } from "../schema";
-import { binaryToDecimal } from "../helpers";
+import {
+  binaryToDecimal,
+  getDeviceStatus,
+  sanitizeDeviceList,
+} from "../helpers/wise-pill-api.helpers";
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const secretKey =
@@ -61,22 +59,13 @@ router.get("/deviceDetails", async (req: Request, res: Response) => {
         last_seen,
         device_status,
       } = head(records) as any;
-      const deviceObject: Device = {
+      const deviceObject: DeviceDetails = {
         alarmTime: alarm ?? "",
         refillAlarm: refill_alarm_datetime ?? "",
         batteryLevel: parseInt(`${last_battery_level}`) / 100,
         lastOpened: last_opened ?? "",
         lastHeartBeat: last_seen ?? "",
-        deviceStatus:
-          device_status === 1
-            ? DEVICE_LINKED
-            : device_status === 2
-            ? DEVICE_AVAILABLE
-            : device_status === 3
-            ? DAMAGED_OR_LOST
-            : device_status === 9
-            ? DEVICE_UNAVAILABLE
-            : "",
+        deviceStatus: getDeviceStatus(device_status),
       };
       res.status(status).send(deviceObject);
     }
@@ -193,7 +182,7 @@ router.post("/alarms", async (req: Request, res: Response) => {
 
 // For fetching device list
 router.get("/devices", async (req: Request, res: Response) => {
-  let sanitizedDevices: Array<Device> = [];
+  let sanitizedDevices: Array<DeviceDetails> = [];
   // TODO fetch this from DHIS2
   const deviceFetchUrl = `devices/getDevices?device_status=1&episode_type=0`;
   const { status, data } = await wisePillClient.get(deviceFetchUrl);
@@ -207,7 +196,7 @@ router.get("/devices", async (req: Request, res: Response) => {
     const chunkedRecord = chunk(records, recordsGroupCount);
 
     for (const recordsGroup of chunkedRecord) {
-      const devicesMergedWithRecords: Array<Device> = [];
+      const devicesMergedWithRecords: Array<DeviceDetails> = [];
       const imeis = compact(
         map(recordsGroup, ({ device_imei }: any) => device_imei)
       );
@@ -225,15 +214,19 @@ router.get("/devices", async (req: Request, res: Response) => {
             );
             devicesMergedWithRecords.push({
               ...(device ?? {}),
+              // TODO handle well total_episode_days attribute by sum-reducing the previous days
               ...first(orderBy(episodes, ["last_seen"], ["desc"])),
             });
           }
         );
       }
 
-      sanitizedDevices = [...sanitizedDevices, ...devicesMergedWithRecords];
+      sanitizedDevices = [
+        ...sanitizedDevices,
+        ...sanitizeDeviceList(devicesMergedWithRecords),
+      ];
     }
-    res.send({ sanitizedDevices });
+    res.send({ devices: sanitizedDevices });
   } else {
     res.status(status).send(data);
   }
