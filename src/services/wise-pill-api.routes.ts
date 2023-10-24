@@ -1,5 +1,16 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { DateTime } from "luxon";
+import {
+  head,
+  chunk,
+  forIn,
+  map,
+  groupBy,
+  find,
+  compact,
+  orderBy,
+  first,
+} from "lodash";
 import wisePillClient from "../clients/wise-pill";
 import { Device } from "../types";
 import {
@@ -47,13 +58,15 @@ router.get("/deviceDetails", async (req: Request, res: Response) => {
         refill_alarm_datetime,
         last_battery_level,
         last_opened,
+        last_seen,
         device_status,
-      } = records;
+      } = head(records) as any;
       const deviceObject: Device = {
         alarmTime: alarm ?? "",
         refillAlarm: refill_alarm_datetime ?? "",
         batteryLevel: parseInt(`${last_battery_level}`) / 100,
         lastOpened: last_opened ?? "",
+        lastHeartBeat: last_seen ?? "",
         deviceStatus:
           device_status === 1
             ? DEVICE_LINKED
@@ -90,8 +103,9 @@ router.post("/devices/assign", async (req: Request, res: Response) => {
   const { status: deviceStatus }: any = data;
 
   if (deviceStatus === 0) {
+    // TODO if device has episode unassign first
     // Creating Episode
-    const date = DateTime.now().format("YYYY-MM-DD");
+    const date = DateTime.now().toFormat("YYYY-MM-DD");
     const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
     const { data } = await wisePillClient.post(createEpisodeUrl);
     const {
@@ -143,9 +157,9 @@ router.post("/alarms", async (req: Request, res: Response) => {
 
   // If there is alarm to be set
   if (alarm) {
-    const alarmDays = days ? `&alarm_days=${binaryToDecimal(days)}` : "";
+    const alarmDays = days ? binaryToDecimal(days) : 127;
     const { data } = await wisePillClient.put(
-      `devices/setAlarm?refill_alarm=1&alarm_time=${alarm}&device_imei=${imei}${alarmDays}`
+      `devices/setAlarm?refill_alarm=1&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
     );
     const { ResultCode: alarmCode, Result: alarmResult } = data;
     if (alarmCode >= 100) {
@@ -178,9 +192,51 @@ router.post("/alarms", async (req: Request, res: Response) => {
 });
 
 // For fetching device list
-router.get("/devices", async (req: Request, res: Response) => {});
+router.get("/devices", async (req: Request, res: Response) => {
+  let sanitizedDevices: Array<Device> = [];
+  // TODO fetch this from DHIS2
+  const deviceFetchUrl = `devices/getDevices?device_status=1&episode_type=0`;
+  const { status, data } = await wisePillClient.get(deviceFetchUrl);
+  if (status === 200) {
+    const { Result, ResultCode, records } = data;
+    if (ResultCode >= 100) {
+      return res.status(409).json({ message: Result, code: ResultCode });
+    }
+    const recordsGroupCount = 10;
+    const episodeUrl = `episodes/getEpisodes`;
+    const chunkedRecord = chunk(records, recordsGroupCount);
 
-// For unassigning device
-router.post("/devices/unassign", async (req: Request, res: Response) => {});
+    for (const recordsGroup of chunkedRecord) {
+      const devicesMergedWithRecords: Array<Device> = [];
+      const imeis = compact(
+        map(recordsGroup, ({ device_imei }: any) => device_imei)
+      );
+      const { data } = await wisePillClient.post(episodeUrl, {
+        data: { imeis },
+      });
+      const { records: episodes, ResultCode: episodeCode } = data;
+      if (episodeCode === 0) {
+        forIn(
+          groupBy(episodes, "device_imei"),
+          (episodes: any[], imei: string) => {
+            const device = find(
+              recordsGroup,
+              ({ device_imei }) => device_imei === imei
+            );
+            devicesMergedWithRecords.push({
+              ...(device ?? {}),
+              ...first(orderBy(episodes, ["last_seen"], ["desc"])),
+            });
+          }
+        );
+      }
+
+      sanitizedDevices = [...sanitizedDevices, ...devicesMergedWithRecords];
+    }
+    res.send({ sanitizedDevices });
+  } else {
+    res.status(status).send(data);
+  }
+});
 
 export default router;

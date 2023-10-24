@@ -8,5 +8,7 @@ export interface Device {
   refillAlarm: string;
   batteryLevel: number;
   lastOpened: string;
+  lastHeartBeat: string;
   deviceStatus: string;
+  daysDeviceInUse?: number;
 }
