@@ -7,4 +7,4 @@ export const DAMAGED_OR_LOST = "Device lost or damanged";
 export const DEVICE_UNAVAILABLE = "Device is unavaibale";
 
 // DHIS2 Datastore
-export const WEB_APP_DATASTORE_KEY = "";
+export const WEB_APP_DATASTORE_KEY = "dat-app";

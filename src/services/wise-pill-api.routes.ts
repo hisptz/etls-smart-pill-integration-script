@@ -7,6 +7,7 @@ import {
   map,
   groupBy,
   find,
+  filter,
   compact,
   orderBy,
   reduce,
@@ -20,6 +21,7 @@ import {
   getDeviceStatus,
   sanitizeDeviceList,
 } from "../helpers/wise-pill-api.helpers";
+import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const secretKey =
@@ -184,15 +186,29 @@ router.post("/alarms", async (req: Request, res: Response) => {
 // For fetching device list
 router.get("/devices", async (req: Request, res: Response) => {
   let sanitizedDevices: Array<DeviceDetails> = [];
-  // TODO fetch this from DHIS2
-  const deviceFetchUrl = `devices/getDevices?device_status=1&episode_type=0`;
-  const { status, data } = await wisePillClient.get(deviceFetchUrl);
+  const assginedDevices = {
+    data: {
+      imeis: map(
+        filter(await getAssignedDevices(), ({ inUse }) => inUse),
+        ({ code }) => code
+      ),
+    },
+  };
+
+  const deviceFetchUrl = `devices/getDeviceDetail`;
+  const { status, data: devicesResults } = await wisePillClient.get(
+    deviceFetchUrl,
+    {
+      data: assginedDevices,
+    }
+  );
+
   if (status === 200) {
-    const { Result, ResultCode, records } = data;
+    const { Result, ResultCode, records } = devicesResults;
     if (ResultCode >= 100) {
       return res.status(409).json({ message: Result, code: ResultCode });
     }
-    const recordsGroupCount = 10;
+    const recordsGroupCount = 50;
     const episodeUrl = `episodes/getEpisodes`;
     const chunkedRecord = chunk(records, recordsGroupCount);
 
@@ -226,7 +242,6 @@ router.get("/devices", async (req: Request, res: Response) => {
           }
         );
       }
-
       sanitizedDevices = [
         ...sanitizedDevices,
         ...sanitizeDeviceList(devicesMergedWithRecords),
@@ -234,7 +249,7 @@ router.get("/devices", async (req: Request, res: Response) => {
     }
     res.send({ devices: sanitizedDevices });
   } else {
-    res.status(status).send(data);
+    res.status(status).send(devicesResults);
   }
 });
 
