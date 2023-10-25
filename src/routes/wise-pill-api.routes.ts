@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { DateTime } from "luxon";
 import {
   head,
   chunk,
@@ -13,29 +12,19 @@ import {
   reduce,
   first,
 } from "lodash";
-import wisePillClient from "../clients/wise-pill";
-import { DeviceDetails } from "../types";
+
+import wisePillRouter from "../services/wise-pill-api.service";
 import { addAlarmSchema, createEpisodeSchema } from "../schema";
 import {
   binaryToDecimal,
   getDeviceStatus,
   sanitizeDeviceList,
 } from "../helpers/wise-pill-api.helpers";
+import wisePillClient from "../clients/wise-pill";
+import { DeviceDetails } from "../types";
 import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
 import logger from "../logging";
-
-export function authenticate(req: Request, res: Response, next: NextFunction) {
-  const secretKey =
-    req.headers["x-api-key"] || req.query.apiKey || req.body.apiKey;
-
-  if (secretKey && secretKey === process.env.SECRET_KEY) {
-    next();
-  } else {
-    res.status(401).json({ error: "Unauthorized: Invalid secret key" });
-  }
-}
-
-const router = Router();
+import { DateTime } from "luxon";
 
 /**
  * @swagger
@@ -46,7 +35,7 @@ const router = Router();
  *       201:
  *         description: Introduction to the API. This can act as a ping to the API.
  */
-router.get("/", (req: Request, res: Response) => {
+wisePillRouter.get("/", (req: Request, res: Response) => {
   const response = {
     messsage:
       "Welcome to the Wisepill and DHIS2 integration API. Go to {server}/docs for the documentation",
@@ -96,7 +85,7 @@ router.get("/", (req: Request, res: Response) => {
  *       409:
  *         description: Failed to set alarm
  */
-router.post("/alarms", async (req: Request, res: Response) => {
+wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
   // validate the body
   const { error: bodyValidationError } = addAlarmSchema.validate(req.body);
   if (bodyValidationError) {
@@ -177,7 +166,7 @@ router.post("/alarms", async (req: Request, res: Response) => {
  *     500:
  *       description: Server Error
  */
-router.get("/devices", async (req: Request, res: Response) => {
+wisePillRouter.get("/devices", async (req: Request, res: Response) => {
   let sanitizedDevices: Array<DeviceDetails> = [];
   const deviceFetchUrl = `devices/getDeviceDetail`;
   const episodeUrl = `episodes/getEpisodes`;
@@ -298,7 +287,7 @@ router.get("/devices", async (req: Request, res: Response) => {
  *                   type: string
  *                   description: Error message
  */
-router.get("/devices/details", async (req: Request, res: Response) => {
+wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
   const { imei } = req.query;
   const { status, data } = await wisePillClient.get(
     `devices/getDevices.php?device_imei=${imei}`
@@ -388,12 +377,12 @@ router.get("/devices/details", async (req: Request, res: Response) => {
  *                   type: string
  *                   description: Error message
  */
-router.post("/devices/assign", async (req: Request, res: Response) => {
+wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
   //validate schema
   const { error: bodyValidationError } = createEpisodeSchema.validate(req.body);
   if (bodyValidationError) {
     return res.status(400).json({
-      error: bodyValidationError.details.map((error) => error.message),
+      error: bodyValidationError.details.map((error: any) => error.message),
     });
   }
   const { imei, patientId } = req.body;
@@ -454,5 +443,3 @@ router.post("/devices/assign", async (req: Request, res: Response) => {
     res.status(404).send({ message: `Device ${imei} not found` });
   }
 });
-
-export default router;

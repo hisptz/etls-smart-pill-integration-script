@@ -5,7 +5,9 @@ import logger from "../logging";
 import { Duration } from "../types";
 import swaggerUi from "swagger-ui-express";
 
-import wisePillRoutes, { authenticate } from "../services/wise-pill-api.routes";
+import wisePillRouter, {
+  authenticate,
+} from "../services/wise-pill-api.service";
 import { startIntegrationProcess } from "../services";
 import swaggerJsdoc from "swagger-jsdoc";
 
@@ -16,10 +18,10 @@ const swaggerOptions = {
       title: "Wisepill and DHIS2 integration API Documentation",
       version: "1.0.0",
       description:
-        "API documentation for the Integration API server for Wisepill and DHIS2",
+        "API documentation for the Integration API server for Wisepill and DHIS2. This API exposes the required API by the DHIS2 app that manages the integration from the wisepill API specifications",
     },
   },
-  apis: ["./src/services/*.routes.ts"],
+  apis: ["./src/routes/*.routes.ts"],
 };
 
 const swaggerSpecs = swaggerJsdoc(swaggerOptions);
@@ -61,7 +63,7 @@ program
         app.use(authenticate);
       }
 
-      app.use("/api", wisePillRoutes);
+      app.use("/api", wisePillRouter);
 
       app.listen(port, () => {
         logger.info(
