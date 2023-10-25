@@ -22,6 +22,7 @@ import {
   sanitizeDeviceList,
 } from "../helpers/wise-pill-api.helpers";
 import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
+import logger from "../logging";
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const secretKey =
@@ -117,7 +118,7 @@ router.get("/devices", async (req: Request, res: Response) => {
 
   if (status === 200) {
     const { Result, ResultCode, records } = devicesResults;
-    if (ResultCode >= 100) {
+    if (parseInt(`${ResultCode}`) >= 100) {
       return res.status(409).json({ message: Result, code: ResultCode });
     }
 
@@ -132,7 +133,7 @@ router.get("/devices", async (req: Request, res: Response) => {
         data: { imeis },
       });
       const { records: episodes, ResultCode: episodeCode } = data;
-      if (episodeCode === 0) {
+      if (episodeCode == 0) {
         forIn(
           groupBy(episodes, "device_imei"),
           (episodes: any[], imei: string) => {
@@ -210,49 +211,60 @@ router.post("/devices/assign", async (req: Request, res: Response) => {
   const { imei, patientId } = req.body;
 
   // Finding device
-  const availableStatus = 2;
-  const findDeviceUrl = `devices/findDevice?device_status=${availableStatus}&input=${imei}`;
+  const assignedDeviceStatus = 1;
+  const findDeviceUrl = `devices/findDevice?input=${imei}`;
   const { data } = await wisePillClient.get(findDeviceUrl);
-  const { status: deviceStatus }: any = data;
+  const { ResultCode: devicesRequestStatus, records: deviceRecords }: any =
+    data;
 
-  if (deviceStatus === 0) {
-    // TODO if device has episode unassign first
+  if (devicesRequestStatus == 0) {
+    // Unassign the assgined devices
+    const { device_status: deviceStatus } = first(deviceRecords as any[]);
+    if (deviceStatus == assignedDeviceStatus) {
+      logger.info(`Unassigning ${imei}`);
+      const unAssignUrl = `devices/unassignDevice?device_imei=${imei}`;
+      await wisePillClient.put(unAssignUrl);
+    }
     // Creating Episode
-    const date = DateTime.now().toFormat("YYYY-MM-DD");
+    const date = DateTime.now().toFormat("yyyy-MM-dd");
+    console.log(date);
     const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
     const { data } = await wisePillClient.post(createEpisodeUrl);
+    console.log(data);
     const {
       ResultCode: creatEpisodeResultCode,
       Result: message,
       episode_id: episodeId,
     }: any = data;
 
-    if (creatEpisodeResultCode === 0 && episodeId) {
+    if (creatEpisodeResultCode == 0 && episodeId) {
       // Assigning episode to device
       const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${imei}`;
       const { data } = await wisePillClient.put(assignDeviceUrl);
+
       const {
         ResultCode: deviceAssignmentCode,
         Result: deviceAssigmnetResult,
       }: any = data;
-      if (deviceAssignmentCode === 0) {
+      if (deviceAssignmentCode == 0) {
         res.status(201).send({
           status: 201,
           message: `Device ${imei} assigned to ${patientId}`,
         });
       } else {
+        console.log(data);
         res.status(409).send({ message: deviceAssigmnetResult });
       }
     } else {
       res.status(409).send({
         message:
-          creatEpisodeResultCode === 1
+          creatEpisodeResultCode == 1
             ? `Episode already exist for ${imei}`
             : message ?? `Failed to create Episode for ${imei}`,
       });
     }
   } else {
-    res.status(404).send({ message: "Device not found" });
+    res.status(404).send({ message: `Device ${imei} not found` });
   }
 });
 

@@ -24,13 +24,13 @@ export function binaryToDecimal(binaryString: string): number {
 
 export function getDeviceStatus(status: string): string {
   const statusCode = parseInt(status);
-  return statusCode === 1
+  return statusCode == 1
     ? DEVICE_LINKED
-    : statusCode === 2
+    : statusCode == 2
     ? DEVICE_AVAILABLE
-    : statusCode === 3
+    : statusCode == 3
     ? DAMAGED_OR_LOST
-    : statusCode === 9
+    : statusCode == 9
     ? DEVICE_UNAVAILABLE
     : "";
 }
