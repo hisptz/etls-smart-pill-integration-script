@@ -37,6 +37,15 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
 const router = Router();
 
+/**
+ * @swagger
+ * /api/:
+ *   get:
+ *     description: Get introduction to the API
+ *     responses:
+ *       201:
+ *         description: Introduction to the API. This can act as a ping to the API.
+ */
 router.get("/", (req: Request, res: Response) => {
   const response = {
     messsage:
@@ -46,6 +55,47 @@ router.get("/", (req: Request, res: Response) => {
 });
 
 // For setting device alarm
+/**
+ * @swagger
+ * /api/alarms:
+ *   post:
+ *     description: Setting the Alarms for the device
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               imei:
+ *                 type: string
+ *                 description: Device Imei
+ *               alarm:
+ *                 type: string
+ *                 description: Alarm to be set for taking medications in the format of hh:mm
+ *               refillAlarm:
+ *                 type: string
+ *                 description:  Alarm to be set for refilling the device with medications in the format of YYYY-MM-DD hh:mm:ss
+ *               days:
+ *                 type: string
+ *                 description: This is binary representation of days of the week, SMTWTFS in a string format. e.g. 1111111
+ *                 minLength: 7
+ *             required:
+ *               - imei
+ *     responses:
+ *       201:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *       409:
+ *         description: Failed to set alarm
+ */
 router.post("/alarms", async (req: Request, res: Response) => {
   // validate the body
   const { error: bodyValidationError } = addAlarmSchema.validate(req.body);
@@ -91,9 +141,42 @@ router.post("/alarms", async (req: Request, res: Response) => {
       .status(409)
       .json({ status: 409, message: "No alarm was specifiied" });
   }
+
+  return res.status(201).json({ message: "Alarm set successfully" });
 });
 
 // For fetching device list
+/**
+ * @swagger
+ * /api/devices:
+ *   get:
+ *     description: Get a list of devices that are assigned from the DHIS2 instance
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 devices:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       imei:
+ *                         type: string
+ *                         description: Device IMEI number
+ *                       lastHeartBeat:
+ *                         type: string
+ *                         description: Time for the last heart beath received by the
+ *                       email:
+ *                         type: string
+ *                         format: email
+ *                         description: User's email address
+ *     500:
+ *       description: Server Error
+ */
 router.get("/devices", async (req: Request, res: Response) => {
   let sanitizedDevices: Array<DeviceDetails> = [];
   const deviceFetchUrl = `devices/getDeviceDetail`;
@@ -166,6 +249,55 @@ router.get("/devices", async (req: Request, res: Response) => {
 });
 
 // For fetching device list
+/**
+ * @swagger
+ * /api/devices/details:
+ *   get:
+ *     description: Get a list of users based on query parameters
+ *     parameters:
+ *       - name: imei
+ *         description: Specifies the device IMEI number
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 deviceStatus:
+ *                   type: string
+ *                   description: Status of a device
+ *                 lastHeartBeat:
+ *                   type: string
+ *                   description: Time for the last received heartbeat signal
+ *                 lastOpened:
+ *                   type: string
+ *                   description: Time when the device was last opened
+ *                 batteryLevel:
+ *                   type: number
+ *                   description: The last recorded device battery level
+ *                 refillAlarm:
+ *                   type: string
+ *                   description: Alarm time set for refelling the device with medications
+ *                 alarmTime:
+ *                   type: string
+ *                   description: Alarm time set for taking medications
+ *       404:
+ *         description: Device not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Error message
+ */
 router.get("/devices/details", async (req: Request, res: Response) => {
   const { imei } = req.query;
   const { status, data } = await wisePillClient.get(
@@ -200,6 +332,62 @@ router.get("/devices/details", async (req: Request, res: Response) => {
 });
 
 // For assigning device
+/**
+ * @swagger
+ * /api/devices/assign:
+ *   post:
+ *     description: For assigning a device and client to a wisepill episode, for adherence tracking.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               imei:
+ *                 type: string
+ *                 description: Device Imei
+ *               patientId:
+ *                 type: string
+ *                 description: This is the unique identifier for a patient from the DHIS2 instance
+ *             required:
+ *               - imei
+ *               - patientId
+ *     responses:
+ *       201:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Success message
+ *                 status:
+ *                   type: number
+ *                   description: HTTP ststus code
+ *       409:
+ *         description: Encountered conflicts on assigning device. A descriptive message of reason will be sent in the response body.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Conflict message
+ *       404:
+ *         description: Device not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   description: Error message
+ */
 router.post("/devices/assign", async (req: Request, res: Response) => {
   //validate schema
   const { error: bodyValidationError } = createEpisodeSchema.validate(req.body);
@@ -241,7 +429,6 @@ router.post("/devices/assign", async (req: Request, res: Response) => {
       // Assigning episode to device
       const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${imei}`;
       const { data } = await wisePillClient.put(assignDeviceUrl);
-
       const {
         ResultCode: deviceAssignmentCode,
         Result: deviceAssigmnetResult,
