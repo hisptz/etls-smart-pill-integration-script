@@ -38,13 +38,134 @@ const router = Router();
 
 router.get("/", (req: Request, res: Response) => {
   const response = {
-    messsage: "Welcome to the integration API",
+    messsage:
+      "Welcome to the Wisepill and DHIS2 integration API. Go to {server}/docs for the documentation",
   };
   res.status(200).send(response);
 });
 
+// For setting device alarm
+router.post("/alarms", async (req: Request, res: Response) => {
+  // validate the body
+  const { error: bodyValidationError } = addAlarmSchema.validate(req.body);
+  if (bodyValidationError) {
+    return res.status(400).json({
+      error: bodyValidationError.details.map((error) => error.message),
+    });
+  }
+
+  const { alarm, refillAlarm, imei, days } = req.body;
+
+  // If there is alarm to be set
+  if (alarm) {
+    const alarmDays = days ? binaryToDecimal(days) : 127;
+    const { data } = await wisePillClient.put(
+      `devices/setAlarm?refill_alarm=1&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
+    );
+    const { ResultCode: alarmCode, Result: alarmResult } = data;
+    if (alarmCode >= 100) {
+      return res.status(409).json({
+        status: 409,
+        message: `Alarm for ${imei} could not be set. ${alarmResult}`,
+      });
+    }
+  }
+
+  // If there is refill alarm to be set
+  if (refillAlarm) {
+    const { data } = await wisePillClient.put(
+      `devices/setRefillAlarm?refill_alarm=1&refill_alarm_datetime=${refillAlarm}&device_imei=${imei}`
+    );
+    const { ResultCode: refillAlarmCode, Result: refillAlarmResult } = data;
+    if (refillAlarmCode >= 100) {
+      return res.status(409).json({
+        status: 409,
+        message: `Refill alarm for ${imei} could not be set. ${refillAlarmResult}`,
+      });
+    }
+  }
+
+  if (!refillAlarm && !alarm) {
+    return res
+      .status(409)
+      .json({ status: 409, message: "No alarm was specifiied" });
+  }
+});
+
 // For fetching device list
-router.get("/deviceDetails", async (req: Request, res: Response) => {
+router.get("/devices", async (req: Request, res: Response) => {
+  let sanitizedDevices: Array<DeviceDetails> = [];
+  const deviceFetchUrl = `devices/getDeviceDetail`;
+  const episodeUrl = `episodes/getEpisodes`;
+  const devicesGroupCount = 50;
+
+  const assginedDevices = {
+    data: {
+      imeis: map(
+        filter(await getAssignedDevices(), ({ inUse }) => inUse),
+        ({ code }) => code
+      ),
+    },
+  };
+
+  const { status, data: devicesResults } = await wisePillClient.get(
+    deviceFetchUrl,
+    {
+      data: assginedDevices,
+    }
+  );
+
+  if (status === 200) {
+    const { Result, ResultCode, records } = devicesResults;
+    if (ResultCode >= 100) {
+      return res.status(409).json({ message: Result, code: ResultCode });
+    }
+
+    const chunkedRecord = chunk(records, devicesGroupCount);
+
+    for (const recordsGroup of chunkedRecord) {
+      const devicesMergedWithRecords: Array<DeviceDetails> = [];
+      const imeis = compact(
+        map(recordsGroup, ({ device_imei }: any) => device_imei)
+      );
+      const { data } = await wisePillClient.post(episodeUrl, {
+        data: { imeis },
+      });
+      const { records: episodes, ResultCode: episodeCode } = data;
+      if (episodeCode === 0) {
+        forIn(
+          groupBy(episodes, "device_imei"),
+          (episodes: any[], imei: string) => {
+            const device = find(
+              recordsGroup,
+              ({ device_imei }) => device_imei === imei
+            );
+            devicesMergedWithRecords.push({
+              ...(device ?? {}),
+              ...first(orderBy(episodes, ["last_seen"], ["desc"])),
+              total_device_days: reduce(
+                episodes,
+                (totalDays: number, { total_device_days }) =>
+                  parseInt(total_device_days) + totalDays,
+                0
+              ),
+            });
+          }
+        );
+      }
+      sanitizedDevices = [
+        ...sanitizedDevices,
+        ...sanitizeDeviceList(devicesMergedWithRecords),
+      ];
+    }
+    res.send({ devices: sanitizedDevices });
+  } else {
+    res.status(status).send(devicesResults);
+  }
+});
+
+// For fetching device list
+router.get("/devices/details", async (req: Request, res: Response) => {
   const { imei } = req.query;
   const { status, data } = await wisePillClient.get(
     `devices/getDevices.php?device_imei=${imei}`
@@ -132,124 +253,6 @@ router.post("/devices/assign", async (req: Request, res: Response) => {
     }
   } else {
     res.status(404).send({ message: "Device not found" });
-  }
-});
-
-// For setting device alarm
-router.post("/alarms", async (req: Request, res: Response) => {
-  // validate the body
-  const { error: bodyValidationError } = addAlarmSchema.validate(req.body);
-  if (bodyValidationError) {
-    return res.status(400).json({
-      error: bodyValidationError.details.map((error) => error.message),
-    });
-  }
-
-  const { alarm, refillAlarm, imei, days } = req.body;
-
-  // If there is alarm to be set
-  if (alarm) {
-    const alarmDays = days ? binaryToDecimal(days) : 127;
-    const { data } = await wisePillClient.put(
-      `devices/setAlarm?refill_alarm=1&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
-    );
-    const { ResultCode: alarmCode, Result: alarmResult } = data;
-    if (alarmCode >= 100) {
-      return res.status(409).json({
-        status: 409,
-        message: `Alarm for ${imei} could not be set. ${alarmResult}`,
-      });
-    }
-  }
-
-  // If there is refill alarm to be set
-  if (refillAlarm) {
-    const { data } = await wisePillClient.put(
-      `devices/setRefillAlarm?refill_alarm=1&refill_alarm_datetime=${refillAlarm}&device_imei=${imei}`
-    );
-    const { ResultCode: refillAlarmCode, Result: refillAlarmResult } = data;
-    if (refillAlarmCode >= 100) {
-      return res.status(409).json({
-        status: 409,
-        message: `Refill alarm for ${imei} could not be set. ${refillAlarmResult}`,
-      });
-    }
-  }
-
-  if (!refillAlarm && !alarm) {
-    return res
-      .status(409)
-      .json({ status: 409, message: "No alarm was specifiied" });
-  }
-});
-
-// For fetching device list
-router.get("/devices", async (req: Request, res: Response) => {
-  let sanitizedDevices: Array<DeviceDetails> = [];
-  const assginedDevices = {
-    data: {
-      imeis: map(
-        filter(await getAssignedDevices(), ({ inUse }) => inUse),
-        ({ code }) => code
-      ),
-    },
-  };
-
-  const deviceFetchUrl = `devices/getDeviceDetail`;
-  const { status, data: devicesResults } = await wisePillClient.get(
-    deviceFetchUrl,
-    {
-      data: assginedDevices,
-    }
-  );
-
-  if (status === 200) {
-    const { Result, ResultCode, records } = devicesResults;
-    if (ResultCode >= 100) {
-      return res.status(409).json({ message: Result, code: ResultCode });
-    }
-    const recordsGroupCount = 50;
-    const episodeUrl = `episodes/getEpisodes`;
-    const chunkedRecord = chunk(records, recordsGroupCount);
-
-    for (const recordsGroup of chunkedRecord) {
-      const devicesMergedWithRecords: Array<DeviceDetails> = [];
-      const imeis = compact(
-        map(recordsGroup, ({ device_imei }: any) => device_imei)
-      );
-      const { data } = await wisePillClient.post(episodeUrl, {
-        data: { imeis },
-      });
-      const { records: episodes, ResultCode: episodeCode } = data;
-      if (episodeCode === 0) {
-        forIn(
-          groupBy(episodes, "device_imei"),
-          (episodes: any[], imei: string) => {
-            const device = find(
-              recordsGroup,
-              ({ device_imei }) => device_imei === imei
-            );
-            devicesMergedWithRecords.push({
-              ...(device ?? {}),
-              ...first(orderBy(episodes, ["last_seen"], ["desc"])),
-              total_device_days: reduce(
-                episodes,
-                (totalDays: number, { total_device_days }) =>
-                  parseInt(total_device_days) + totalDays,
-                0
-              ),
-            });
-          }
-        );
-      }
-      sanitizedDevices = [
-        ...sanitizedDevices,
-        ...sanitizeDeviceList(devicesMergedWithRecords),
-      ];
-    }
-    res.send({ devices: sanitizedDevices });
-  } else {
-    res.status(status).send(devicesResults);
   }
 });
 
