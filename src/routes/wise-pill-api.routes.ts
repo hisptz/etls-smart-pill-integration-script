@@ -13,7 +13,6 @@ import {
   first,
 } from "lodash";
 
-import wisePillRouter from "../services/wise-pill-api.service";
 import { addAlarmSchema, createEpisodeSchema } from "../schema";
 import {
   binaryToDecimal,
@@ -25,6 +24,8 @@ import { DeviceDetails } from "../types";
 import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
 import logger from "../logging";
 import { DateTime } from "luxon";
+
+export const wisePillRouter = Router();
 
 /**
  * @swagger
@@ -249,7 +250,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
  *         in: query
  *         required: true
  *         schema:
- *           type: string
+ *           type: strin
  *     responses:
  *       200:
  *         description: Success

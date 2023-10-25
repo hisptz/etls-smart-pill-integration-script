@@ -5,11 +5,11 @@ import logger from "../logging";
 import { Duration } from "../types";
 import swaggerUi from "swagger-ui-express";
 
-import wisePillRouter, {
-  authenticate,
-} from "../services/wise-pill-api.service";
+import { authenticate } from "../services";
 import { startIntegrationProcess } from "../services";
 import swaggerJsdoc from "swagger-jsdoc";
+import { wisePillRouter } from "../routes/wise-pill-api.routes";
+import rateLimit from "express-rate-limit";
 
 const swaggerOptions = {
   definition: {
@@ -21,10 +21,19 @@ const swaggerOptions = {
         "API documentation for the Integration API server for Wisepill and DHIS2. This API exposes the required API by the DHIS2 app that manages the integration from the wisepill API specifications",
     },
   },
-  apis: ["./src/routes/*.routes.ts"],
+  apis: ["./**/*.routes.ts"],
 };
 
 const swaggerSpecs = swaggerJsdoc(swaggerOptions);
+
+const apiServerRateLimiter = rateLimit({
+  windowMs: 30 * 1000,
+  limit: 100,
+  message: {
+    status: "429",
+    message: "You have made too many requests, please try again later.",
+  },
+});
 
 config();
 const program = new Command();
@@ -58,6 +67,7 @@ program
     try {
       app.use(express.json());
       app.use(express.urlencoded({ extended: true }));
+      app.use(apiServerRateLimiter);
 
       if (process.env.SECRET_KEY) {
         app.use(authenticate);

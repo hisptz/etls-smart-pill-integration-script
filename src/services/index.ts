@@ -1,2 +1,2 @@
 export * from "./integration.service";
-export * from "./wise-pill-api.service";
+export * from "./api-authentication.service";

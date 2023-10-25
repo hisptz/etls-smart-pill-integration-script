@@ -10,7 +10,3 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     res.status(401).json({ error: "Unauthorized: Invalid secret key" });
   }
 }
-
-const wisePillRoutesr = Router();
-
-export default wisePillRoutesr;
