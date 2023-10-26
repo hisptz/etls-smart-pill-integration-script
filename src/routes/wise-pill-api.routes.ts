@@ -6,7 +6,6 @@ import {
   map,
   groupBy,
   find,
-  filter,
   compact,
   orderBy,
   reduce,
@@ -175,10 +174,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
 
   const assginedDevices = {
     data: {
-      imeis: map(
-        filter(await getAssignedDevices(), ({ inUse }) => inUse),
-        ({ code }) => code
-      ),
+      imeis: await getAssignedDevices(),
     },
   };
 

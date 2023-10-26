@@ -1,6 +1,7 @@
 import { WEB_APP_DATASTORE_KEY } from "../constants";
 import dhis2Client from "../clients/dhis2";
 import logger from "../logging";
+import { filter, map } from "lodash";
 
 async function getDataStoreSettings(): Promise<any> {
   const url = `dataStore/${WEB_APP_DATASTORE_KEY}/settings`;
@@ -16,7 +17,12 @@ async function getDataStoreSettings(): Promise<any> {
   }
 }
 
-export async function getAssignedDevices(): Promise<any> {
+export async function getAssignedDevices(): Promise<string[]> {
   const { deviceEmeiList } = await getDataStoreSettings();
-  return deviceEmeiList ?? {};
+  return deviceEmeiList
+    ? map(
+        filter(deviceEmeiList, ({ inUse }) => inUse),
+        ({ code }) => code
+      )
+    : [];
 }
