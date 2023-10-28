@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Request, Response } from "express";
 import {
   head,
   chunk,
@@ -401,10 +401,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     }
     // Creating Episode
     const date = DateTime.now().toFormat("yyyy-MM-dd");
-    console.log(date);
     const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
     const { data } = await wisePillClient.post(createEpisodeUrl);
-    console.log(data);
     const {
       ResultCode: creatEpisodeResultCode,
       Result: message,
@@ -425,7 +423,6 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
           message: `Device ${imei} assigned to ${patientId}`,
         });
       } else {
-        console.log(data);
         res.status(409).send({ message: deviceAssigmnetResult });
       }
     } else {
