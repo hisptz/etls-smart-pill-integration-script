@@ -1,5 +1,5 @@
 import { Duration } from "../types";
-import { map, head } from "lodash";
+import { map, head, chunk, find, forEach } from "lodash";
 
 import logger from "../logging";
 import {
@@ -34,13 +34,18 @@ async function getDhis2TrackedEntityInstancesWithEvents({
     return;
   }
 
+  logger.info("Fetching DAT devices assigned in DHIS2.");
+  const deviceImeis = await getAssignedDevices();
+
   //  TODO merge the events and TrackedEntity Instances
-  const trackedEntityInstances = await getDhis2TrackedEntityInstances(program);
+  const trackedEntityInstances = await getDhis2TrackedEntityInstances(
+    program,
+    deviceImeis,
+    attributes
+  );
   const events = await getDhis2Events(programStage);
   logger.info("Organizing DHIS2 tracked entities and events");
 
-  //  logger.info("Fetching DAT devices assigned in DHIS2.");
-  //  const deviceImeis = await getAssignedDevices();
   //
   //  logger.info("Fetching Adherence episodes from Wisepill.");
   //  const episodes = await getDevicesWisepillEpisodes(deviceImeis);
@@ -50,19 +55,54 @@ async function getDhis2TrackedEntityInstancesWithEvents({
   //  TODO import the events
 }
 
-async function getDhis2TrackedEntityInstances(program: string): Promise<any> {
+async function getDhis2TrackedEntityInstances(
+  program: string,
+  assignedDevises: string[],
+  attributes: { [key: string]: string }
+): Promise<Array<{ [key: string]: string }>> {
   logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
-  const sanitizedTrackedEntityInstances: any[] = [];
-  const pageSize = 500;
-  let page = 1;
-  let totalPages = 1;
+  const sanitizedTrackedEntityInstances: { [key: string]: string }[] = [];
+  const pageSize = 100;
+  const { deviceIMEInumber: imeiAttribute } = attributes;
 
-  while (totalPages <= page) {
-    const url = `tracker/trackedEntities?fields=trackedEntity,attributes&ouMode=ALL&program=tj4u1ip0tTF&totalPages=true&page=1&pageSize=250`;
-    //    TODO update totalPages;
-    logger.info(
-      `Feteched tracked entity instances from ${program} program: ${page}/${totalPages}`
-    );
+  const chunkedDevices = chunk(assignedDevises, pageSize);
+
+  let page = 1;
+  for (const devices of chunkedDevices) {
+    try {
+      const url = `trackedEntityInstances.json?fields=attributes,trackedEntityInstances&ouMode=ALL&filter=${imeiAttribute}:in:${devices.join(
+        ";"
+      )}&program=${program}&paging=false`;
+
+      const { data, status } = await dhis2Client.get(url);
+      if (status === 200) {
+        const { trackedEntityInstances } = data;
+        forEach(
+          trackedEntityInstances,
+          ({ attributes, trackedEntityInstance }) => {
+            const imei = find(
+              attributes,
+              ({ attribute }) => attribute === imeiAttribute
+            );
+            sanitizedTrackedEntityInstances.push({
+              [imei]: trackedEntityInstance,
+            });
+          }
+        );
+        logger.info(
+          `Feteched tracked entity instances from ${program} program: ${page}/${chunkedDevices.length}`
+        );
+      } else {
+        logger.warn(
+          `Failed to fetch tracked entity instances for ${page} page`
+        );
+      }
+    } catch (error: any) {
+      logger.warn(
+        `Failed to fetch tracked entity instances. Check the error below!`
+      );
+      logger.error(error.toString());
+    }
     page++;
   }
 
