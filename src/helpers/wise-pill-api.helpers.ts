@@ -1,4 +1,4 @@
-import { map } from "lodash";
+import { map, chunk } from "lodash";
 import { Device } from "../types";
 import {
   DAMAGED_OR_LOST,
@@ -6,6 +6,7 @@ import {
   DEVICE_LINKED,
   DEVICE_UNAVAILABLE,
 } from "../constants";
+import logger from "../logging";
 
 export function binaryToDecimal(binaryString: string): number {
   const binaryArray = binaryString.split("").reverse();
@@ -49,13 +50,31 @@ export function sanitizeDeviceList(
       device_status: deviceStatus,
     }: any): Device => {
       return {
-        imei,
-        lastHeartBeat,
-        batteryLevel: parseInt(`${batteryLevel}`) / 100,
-        lastOpened,
-        daysDeviceInUse,
+        imei: imei ?? "",
+        lastHeartBeat: lastHeartBeat ?? "",
+        batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
+        lastOpened: lastOpened ?? "",
+        daysDeviceInUse: daysDeviceInUse ?? 0,
         deviceStatus: getDeviceStatus(deviceStatus),
       };
     }
   );
+}
+
+export async function getDevicesWisepillEpisodes(
+  deviceImeis: string[]
+): Promise<any> {
+  const episodes = [];
+  const imeiGroupCount = 50;
+  const chunckedImeis = chunk(deviceImeis, imeiGroupCount);
+
+  let fetchCount = 0;
+  for (const imeis of chunckedImeis) {
+    fetchCount++;
+    //  TODO fetch
+    //  TODO sanitize episodes
+    logger.info(
+      `Fetched wisepill episodes: ${fetchCount}/${chunckedImeis.length}`
+    );
+  }
 }
