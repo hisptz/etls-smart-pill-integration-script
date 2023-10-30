@@ -2,6 +2,7 @@
 
 cp .env.example build/script/
 cp build-readme.md build/script/README.md
+cp package.json build/package.json
 
 PKG_VERSION=$(node -p "require('./package.json').version")
 PKG_NAME=$(node -p "require('./package.json').name")
