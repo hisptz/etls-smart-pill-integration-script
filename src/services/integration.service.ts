@@ -1,4 +1,4 @@
-import { Duration } from "../types";
+import { Duration, Episode } from "../types";
 import { DateTime } from "luxon";
 import { map, head, chunk, find, forEach, filter } from "lodash";
 
@@ -54,13 +54,13 @@ async function getDhis2TrackedEntityInstancesWithEvents({
   logger.info("Fetching DAT devices assigned in DHIS2.");
   const deviceImeis = await getAssignedDevices();
 
-  //  TODO merge the events and TrackedEntity Instances
   let trackedEntityInstances = await getDhis2TrackedEntityInstances(
     program,
     deviceImeis,
     attributes
   );
   const events = await getDhis2Events(programStage, { startDate, endDate });
+
   logger.info("Organizing DHIS2 tracked entities and events");
   trackedEntityInstances = map(
     trackedEntityInstances,
@@ -80,10 +80,23 @@ async function getDhis2TrackedEntityInstancesWithEvents({
   logger.info("Fetching Adherence episodes from Wisepill.");
   const episodes = await getDevicesWisepillEpisodes(deviceImeis);
 
-  //  TODO generate events from the
+  const eventPayloads = generateEventPayload(episodes, trackedEntityInstances);
 
-  //  TODO import the events
+  await uploadDhis2Events(eventPayloads);
 }
+
+//TODO generate event payloads
+
+function generateEventPayload(
+  episodes: Episode[],
+  trackedEntityInstances: { [key: string]: any }
+): any[] {
+  console.log(JSON.stringify({ trackedEntityInstances, episodes }));
+  return [];
+}
+
+//  TODO import the events
+async function uploadDhis2Events(eventPayloads: any): Promise<void> {}
 
 async function getDhis2TrackedEntityInstances(
   program: string,
@@ -100,7 +113,7 @@ async function getDhis2TrackedEntityInstances(
   let page = 1;
   for (const devices of chunkedDevices) {
     try {
-      const url = `trackedEntityInstances.json?fields=attributes,trackedEntityInstances&ouMode=ALL&filter=${imeiAttribute}:in:${devices.join(
+      const url = `trackedEntityInstances.json?fields=attributes,trackedEntityInstance&ouMode=ALL&filter=${imeiAttribute}:in:${devices.join(
         ";"
       )}&program=${program}&paging=false`;
 
@@ -110,7 +123,7 @@ async function getDhis2TrackedEntityInstances(
         forEach(
           trackedEntityInstances,
           ({ attributes, trackedEntityInstance }) => {
-            const imei = find(
+            const { value: imei } = find(
               attributes,
               ({ attribute }) => attribute === imeiAttribute
             );
@@ -156,7 +169,7 @@ async function getDhis2Events(
 
   const rootOu = await getRootOrganisationUnit();
 
-  while (totalPages <= page && rootOu !== "") {
+  while (page <= totalPages && rootOu !== "") {
     const url = `events?fields=event,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&f&updatedWithin=${eventsLastUpdatedDuration}d&totalPages=true&page=${page}&pageSize=${pageSize}`;
 
     const { data, status } = await dhis2Client.get(url);

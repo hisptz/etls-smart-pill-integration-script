@@ -76,7 +76,7 @@ export async function getDevicesWisepillEpisodes(
   let fetchCount = 0;
   for (const imeis of chunckedImeis) {
     fetchCount++;
-    const { data } = await wisePillClient.post(episodeUrl, {
+    const { data } = await wisePillClient.get(episodeUrl, {
       data: { imeis },
     });
     const { records: episodes, ResultCode: episodeCode } = data;
@@ -92,8 +92,8 @@ export async function getDevicesWisepillEpisodes(
         data: assginedDevicesObject,
       }
     );
-    const { records: devices, ResultCode: devicesCode } = devicesResults;
 
+    const { records: devices, ResultCode: devicesCode } = devicesResults;
     for (const episode of episodes) {
       const {
         device_imei: imei,
@@ -104,18 +104,20 @@ export async function getDevicesWisepillEpisodes(
       } = episode;
       const deviceDetails = find(
         devices,
-        ({ device_imei: deviceImei }) => deviceImei === imei
+        ({ device_imei: deviceImei }) => deviceImei == imei
       );
       const { device_status: deviceStatus } = deviceDetails ?? {};
 
-      sanitizedEpisodes.push({
-        imei,
-        adherenceString,
-        episodeStartDate,
-        lastSeen,
-        deviceStatus: getDeviceStatus(deviceStatus),
-        batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
-      });
+      if (imei) {
+        sanitizedEpisodes.push({
+          imei,
+          adherenceString,
+          episodeStartDate,
+          lastSeen,
+          deviceStatus: getDeviceStatus(deviceStatus),
+          batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
+        });
+      }
     }
     logger.info(
       `Fetched wisepill episodes: ${fetchCount}/${chunckedImeis.length}`
