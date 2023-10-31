@@ -12,6 +12,15 @@ export interface DeviceDetails {
   deviceStatus: string;
 }
 
+export interface Episode {
+  imei: string;
+  adherenceString: string;
+  episodeStartDate: string;
+  lastSeen: string;
+  batteryLevel: number;
+  deviceStatus: string;
+}
+
 export interface Device extends DeviceDetails {
   daysDeviceInUse: number;
   imei: string;

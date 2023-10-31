@@ -1,6 +1,6 @@
 import { Duration } from "../types";
 import { DateTime } from "luxon";
-import { map, head, chunk, find, forEach } from "lodash";
+import { map, head, chunk, find, forEach, filter } from "lodash";
 
 import logger from "../logging";
 import {
@@ -55,17 +55,30 @@ async function getDhis2TrackedEntityInstancesWithEvents({
   const deviceImeis = await getAssignedDevices();
 
   //  TODO merge the events and TrackedEntity Instances
-  const trackedEntityInstances = await getDhis2TrackedEntityInstances(
+  let trackedEntityInstances = await getDhis2TrackedEntityInstances(
     program,
     deviceImeis,
     attributes
   );
   const events = await getDhis2Events(programStage, { startDate, endDate });
   logger.info("Organizing DHIS2 tracked entities and events");
+  trackedEntityInstances = map(
+    trackedEntityInstances,
+    ({ trackedEntityInstance, imei }) => {
+      const teiEvents = filter(
+        events,
+        ({ trackedEntityInstance: tei }) => trackedEntityInstance === tei
+      );
+      return {
+        trackedEntityInstance,
+        imei,
+        events: teiEvents,
+      };
+    }
+  );
 
-  //
-  //  logger.info("Fetching Adherence episodes from Wisepill.");
-  //  const episodes = await getDevicesWisepillEpisodes(deviceImeis);
+  logger.info("Fetching Adherence episodes from Wisepill.");
+  const episodes = await getDevicesWisepillEpisodes(deviceImeis);
 
   //  TODO generate events from the
 
@@ -76,7 +89,7 @@ async function getDhis2TrackedEntityInstances(
   program: string,
   assignedDevises: string[],
   attributes: { [key: string]: string }
-): Promise<Array<{ [key: string]: string }>> {
+): Promise<Array<{ [key: string]: any }>> {
   logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
   const sanitizedTrackedEntityInstances: { [key: string]: string }[] = [];
   const pageSize = 100;

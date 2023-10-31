@@ -1,5 +1,5 @@
-import { map, chunk } from "lodash";
-import { Device } from "../types";
+import { map, chunk, find } from "lodash";
+import { Device, Episode } from "../types";
 import {
   DAMAGED_OR_LOST,
   DEVICE_AVAILABLE,
@@ -7,6 +7,7 @@ import {
   DEVICE_UNAVAILABLE,
 } from "../constants";
 import logger from "../logging";
+import wisePillClient from "../clients/wise-pill";
 
 export function binaryToDecimal(binaryString: string): number {
   const binaryArray = binaryString.split("").reverse();
@@ -36,6 +37,8 @@ export function getDeviceStatus(status: string): string {
     : "";
 }
 
+//export function sanitizeEpisodeList(episodes) {}
+
 export function sanitizeDeviceList(
   devicesMergedWithRecords: any[]
 ): Array<Device> {
@@ -63,18 +66,61 @@ export function sanitizeDeviceList(
 
 export async function getDevicesWisepillEpisodes(
   deviceImeis: string[]
-): Promise<any> {
-  const episodes = [];
+): Promise<Episode[]> {
+  const episodeUrl = `episodes/getEpisodes`;
+  const deviceFetchUrl = `devices/getDeviceDetail`;
+  const sanitizedEpisodes: Episode[] = [];
   const imeiGroupCount = 50;
   const chunckedImeis = chunk(deviceImeis, imeiGroupCount);
 
   let fetchCount = 0;
   for (const imeis of chunckedImeis) {
     fetchCount++;
-    //  TODO fetch
-    //  TODO sanitize episodes
+    const { data } = await wisePillClient.post(episodeUrl, {
+      data: { imeis },
+    });
+    const { records: episodes, ResultCode: episodeCode } = data;
+
+    const assginedDevicesObject = {
+      data: {
+        imeis,
+      },
+    };
+    const { status, data: devicesResults } = await wisePillClient.get(
+      deviceFetchUrl,
+      {
+        data: assginedDevicesObject,
+      }
+    );
+    const { records: devices, ResultCode: devicesCode } = devicesResults;
+
+    for (const episode of episodes) {
+      const {
+        device_imei: imei,
+        adherence_string: adherenceString,
+        last_battery_level: batteryLevel,
+        episode_start_date: episodeStartDate,
+        last_seen: lastSeen,
+      } = episode;
+      const deviceDetails = find(
+        devices,
+        ({ device_imei: deviceImei }) => deviceImei === imei
+      );
+      const { device_status: deviceStatus } = deviceDetails ?? {};
+
+      sanitizedEpisodes.push({
+        imei,
+        adherenceString,
+        episodeStartDate,
+        lastSeen,
+        deviceStatus: getDeviceStatus(deviceStatus),
+        batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
+      });
+    }
     logger.info(
       `Fetched wisepill episodes: ${fetchCount}/${chunckedImeis.length}`
     );
   }
+
+  return sanitizedEpisodes;
 }
