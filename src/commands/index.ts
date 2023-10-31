@@ -43,11 +43,11 @@ program
   .description("")
   .option(
     "-s --startDate <startDate>",
-    "Start date for script coverage in DD-MM-YYYY"
+    "Start date for script coverage in YYYY-MM-DD"
   )
   .option(
     "-e --endDate <endDate>",
-    "End date for script coverage in DD-MM-YYYY"
+    "End date for script coverage in YYYY-MM-DD"
   )
   .action(async ({ startDate, endDate }: Duration) => {
     try {

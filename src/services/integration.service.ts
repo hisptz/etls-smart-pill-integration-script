@@ -1,4 +1,5 @@
 import { Duration } from "../types";
+import { DateTime } from "luxon";
 import { map, head, chunk, find, forEach } from "lodash";
 
 import logger from "../logging";
@@ -8,6 +9,22 @@ import {
 } from "../helpers/dhis2-api.helpers";
 import { getDevicesWisepillEpisodes } from "../helpers/wise-pill-api.helpers";
 import dhis2Client from "../clients/dhis2";
+
+function getEventDuration(startDate?: string, endDate?: string): string {
+  if (!startDate && !endDate) {
+    return "24h";
+  }
+
+  const start = startDate
+    ? DateTime.fromISO(startDate)
+    : DateTime.fromISO("1970-01-01");
+
+  const end = endDate ? DateTime.fromISO(endDate) : DateTime.now();
+
+  const { days, hours } = end.diff(start, ["days", "hours"]).toObject();
+
+  return days ? `${Math.abs(days)}d` : hours ? `${Math.abs(hours)}h` : "24h";
+}
 
 export async function startIntegrationProcess({
   startDate,
@@ -43,7 +60,7 @@ async function getDhis2TrackedEntityInstancesWithEvents({
     deviceImeis,
     attributes
   );
-  const events = await getDhis2Events(programStage);
+  const events = await getDhis2Events(programStage, { startDate, endDate });
   logger.info("Organizing DHIS2 tracked entities and events");
 
   //
@@ -85,7 +102,8 @@ async function getDhis2TrackedEntityInstances(
               ({ attribute }) => attribute === imeiAttribute
             );
             sanitizedTrackedEntityInstances.push({
-              [imei]: trackedEntityInstance,
+              imei,
+              trackedEntityInstance,
             });
           }
         );
@@ -109,33 +127,31 @@ async function getDhis2TrackedEntityInstances(
   return sanitizedTrackedEntityInstances;
 }
 
-async function getDhis2Events(programStage: string): Promise<any> {
+async function getDhis2Events(
+  programStage: string,
+  duration: Duration
+): Promise<any> {
   logger.info(`Fetching DHIS2 events for ${programStage}`);
+
+  const { startDate, endDate } = duration;
+  const eventsLastUpdatedDuration = getEventDuration(startDate, endDate);
+
   let sanitizedEvents: any[] = [];
   const pageSize = 500;
   let page = 1;
   let totalPages = 1;
-  const lastUpdatedDuration = "24h";
 
   const rootOu = await getRootOrganisationUnit();
 
   while (totalPages <= page && rootOu !== "") {
-    const url = `tracker/events?fields=event&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&f&updatedWithin=${lastUpdatedDuration}d&totalPages=true&page=${page}&pageSize=${pageSize}`;
-    //    TODO update totalPages;
+    const url = `events?fields=event,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&f&updatedWithin=${eventsLastUpdatedDuration}d&totalPages=true&page=${page}&pageSize=${pageSize}`;
+
     const { data, status } = await dhis2Client.get(url);
     if (status === 200) {
-      const { instances } = data;
-      const events = map(
-        instances as Array<any>,
-        ({ event, occurredAt, dataValues }) => ({
-          event,
-          occurredAt,
-          dataValues: map(
-            dataValues as Array<any>,
-            ({ dataElement, value }) => ({ dataElement, value })
-          ),
-        })
-      );
+      const { events, pager } = data;
+      const { pageCount } = pager;
+      totalPages = pageCount;
+
       sanitizedEvents = [...sanitizedEvents, ...events];
       logger.info(
         `Fetched DHIS2 events for ${programStage} stage at page ${page}`
