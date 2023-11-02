@@ -161,7 +161,6 @@ export async function getDevicesWisepillEpisodes(
           deviceStatus: getDeviceStatus(deviceStatus),
           batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
         };
-        console.log({ episode });
         sanitizedEpisodes.push(episode);
       }
     }

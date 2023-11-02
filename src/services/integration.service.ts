@@ -113,8 +113,6 @@ async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
     }
   );
 
-  console.log(JSON.stringify(eventPayloads));
-
   //  await uploadDhis2Events(eventPayloads);
 }
 
@@ -255,7 +253,7 @@ function generateEventPayload(
       `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntityInstance} assigned to device ${imei}`
     );
     if (teiEpisodes && teiEpisodes.length) {
-      const cummulativeEpisodes = getCummulatedEpsodes(teiEpisodes);
+      const cummulativeEpisodes = getLatestEpisode(teiEpisodes);
       const { adherenceString, lastSeen, batteryLevel, deviceStatus, imei } =
         cummulativeEpisodes;
 
@@ -364,27 +362,14 @@ function getDHIS2EventPayload(
     program,
     programStage,
     eventDate: sanitizedEventDate,
-    status: "COMPLITED",
+    status: "COMPLETED",
   };
 }
 
-function getCummulatedEpsodes(episodes: Episode[]): Episode {
+function getLatestEpisode(episodes: Episode[]): Episode {
   logger.info("Accumulating the episodes from the same devices");
   const orderedEpisodes = orderBy(episodes, ["lastSeen"], ["asc"]);
-  return reduce(orderedEpisodes, (cummulatedEpisode, episode) => {
-    return {
-      ...cummulatedEpisode,
-      imei: cummulatedEpisode?.imei ?? episode.imei,
-      episodeStartDate:
-        cummulatedEpisode?.episodeStartDate ?? episode.episodeStartDate,
-      lastSeen: episode.lastSeen,
-      batteryLevel: episode.batteryLevel,
-      deviceStatus: episode.deviceStatus,
-      adherenceString: cummulatedEpisode
-        ? cummulatedEpisode.adherenceString
-        : "" + episode.adherenceString,
-    };
-  }) as Episode;
+  return last(orderedEpisodes) as Episode;
 }
 
 //  TODO import the events

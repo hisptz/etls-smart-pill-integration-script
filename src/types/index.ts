@@ -40,7 +40,7 @@ export interface DHIS2Event {
   eventDate: string;
   status:
     | "ACTIVE"
-    | "COMPLITED"
+    | "COMPLETED"
     | "SCHEDULED"
     | "SKIPPED"
     | "VISITED"
