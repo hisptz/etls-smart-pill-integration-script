@@ -1,13 +1,28 @@
-import { map, chunk, find } from "lodash";
-import { Device, Episode } from "../types";
+import { map, chunk, find, last } from "lodash";
 import {
+  AdherenceMapping,
+  DHIS2DataValue,
+  Device,
+  DHIS2Event,
+  Episode,
+} from "../types";
+import {
+  BATTERY_HEALTH_DATA_ELEMENT,
   DAMAGED_OR_LOST,
   DEVICE_AVAILABLE,
+  DEVICE_HEALTH_DATA_ELEMENT,
   DEVICE_LINKED,
+  DEVICE_SIGNAL_DATA_ELEMENT,
   DEVICE_UNAVAILABLE,
+  DOSAGE_TIME_DATA_ELEMENT,
+  HEARTBEAT_RECEIVED,
+  NONE_RECEIVED,
+  RECEIVED_MULTIPLE,
+  RECEIVED_ONCE,
 } from "../constants";
 import logger from "../logging";
 import wisePillClient from "../clients/wise-pill";
+import { DateTime } from "luxon";
 
 export function binaryToDecimal(binaryString: string): number {
   const binaryArray = binaryString.split("").reverse();
@@ -37,7 +52,36 @@ export function getDeviceStatus(status: string): string {
     : "";
 }
 
-//export function sanitizeEpisodeList(episodes) {}
+export function sanitizeAdherenceCode(code: string): string {
+  return code === "0"
+    ? NONE_RECEIVED
+    : code === "1"
+    ? RECEIVED_ONCE
+    : code === "2"
+    ? RECEIVED_MULTIPLE
+    : code === "9"
+    ? HEARTBEAT_RECEIVED
+    : NONE_RECEIVED;
+}
+
+export function getSanitizedAdherence(
+  adherences: string[],
+  end: string
+): AdherenceMapping[] {
+  const episodeAdherences: AdherenceMapping[] = [];
+  const endDate = DateTime.fromSQL(end);
+
+  let daysToRollback = 0;
+  for (const adherence of adherences.reverse()) {
+    const date = endDate.minus({ days: daysToRollback }).toISO()!;
+    episodeAdherences.push({
+      date,
+      adherence,
+    });
+  }
+
+  return episodeAdherences;
+}
 
 export function sanitizeDeviceList(
   devicesMergedWithRecords: any[]
@@ -109,14 +153,16 @@ export async function getDevicesWisepillEpisodes(
       const { device_status: deviceStatus } = deviceDetails ?? {};
 
       if (imei) {
-        sanitizedEpisodes.push({
+        const episode = {
           imei,
           adherenceString,
           episodeStartDate,
           lastSeen,
           deviceStatus: getDeviceStatus(deviceStatus),
           batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
-        });
+        };
+        console.log({ episode });
+        sanitizedEpisodes.push(episode);
       }
     }
     logger.info(
@@ -125,4 +171,37 @@ export async function getDevicesWisepillEpisodes(
   }
 
   return sanitizedEpisodes;
+}
+
+export function generateDataValuesFromAdherenceMapping(
+  { adherence, date }: AdherenceMapping,
+  batteryLevel?: number,
+  deviceStatus?: string
+): Array<DHIS2DataValue> {
+  const dataValues: Array<DHIS2DataValue> = [
+    {
+      dataElement: DOSAGE_TIME_DATA_ELEMENT,
+      value: date,
+    },
+    {
+      dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
+      value: sanitizeAdherenceCode(adherence),
+    },
+  ];
+
+  if (batteryLevel) {
+    dataValues.push({
+      dataElement: BATTERY_HEALTH_DATA_ELEMENT,
+      value: batteryLevel,
+    });
+  }
+
+  if (deviceStatus) {
+    dataValues.push({
+      dataElement: DEVICE_HEALTH_DATA_ELEMENT,
+      value: deviceStatus,
+    });
+  }
+
+  return dataValues;
 }
