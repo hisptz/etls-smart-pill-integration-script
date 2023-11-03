@@ -23,6 +23,7 @@ import logger from "../logging";
 import {
   getAssignedDevices,
   getProgramMapping,
+  logImportSummary,
 } from "../helpers/dhis2-api.helpers";
 import {
   generateDataValuesFromAdherenceMapping,
@@ -113,8 +114,7 @@ async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
     }
   );
 
-  //  console.log(JSON.stringify({ trackedEntityInstances }));
-  //  await uploadDhis2Events(eventPayloads);
+  await uploadDhis2Events(eventPayloads);
 }
 
 async function getDhis2TrackedEntityInstances(
@@ -373,19 +373,21 @@ function getLatestEpisode(episodes: Episode[]): Episode {
   return last(orderedEpisodes) as Episode;
 }
 
-//  TODO import the events
 async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
-  const paginationSize = 50;
-  logger.info(`Saving ${eventPayloads.length} adherence events into DHIS2`);
-
+  const paginationSize = 100;
+  logger.info(
+    `Saving ${
+      eventPayloads.length
+    } adherence events into DHIS2 by pagination of ${[paginationSize]}`
+  );
   const chunkedEvents = chunk(eventPayloads, paginationSize);
-
   let page = 1;
+
   for (const events of chunkedEvents) {
     logger.info(
       `Uploading adherence events to DHIS2: ${page}/${chunkedEvents.length}`
     );
-    console.log(JSON.stringify({ events }));
+
     try {
       const url = `events?strategy=CREATE_AND_UPDATE`;
       const { status, data } = await dhis2Client.post(url, {
@@ -393,16 +395,23 @@ async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
       });
 
       if (status === 200) {
-        console.log(JSON.stringify({ response: data }));
+        logger.info(
+          `Successfuly saved adherence events ${page}/${chunkedEvents.length}`
+        );
+        const { response: importResponse } = data;
+        logImportSummary(importResponse);
       } else {
-        console.log(JSON.stringify({ response: data }));
-        logger.warn(`Failed to save the the adherence events at page ${page}`);
+        logger.warn(
+          `There are errors in saving the the adherence events at page ${page}`
+        );
+        const { response: importResponse } = data;
+        logImportSummary(importResponse);
       }
     } catch (error: any) {
       logger.warn(
         `Failed to save the the adherence events at page ${page}. Check the error below`
       );
-      logger.error(error.toString());
+      logger.error(error.message ?? error.toString());
     }
 
     page++;
