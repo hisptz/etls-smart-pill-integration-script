@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Request, Response } from "express";
 import {
   head,
   chunk,
@@ -6,6 +6,7 @@ import {
   map,
   groupBy,
   find,
+  findIndex,
   compact,
   orderBy,
   reduce,
@@ -172,19 +173,24 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
   const episodeUrl = `episodes/getEpisodes`;
   const devicesGroupCount = 50;
 
-  const assginedDevices = {
+  const assignedDevices = await getAssignedDevices();
+
+  if (assignedDevices.length < 1) {
+    return res.status(200).json({ devices: sanitizedDevices });
+  }
+
+  const assginedDevicesObject = {
     data: {
-      imeis: await getAssignedDevices(),
+      imeis: assignedDevices,
     },
   };
 
   const { status, data: devicesResults } = await wisePillClient.get(
     deviceFetchUrl,
     {
-      data: assginedDevices,
+      data: assginedDevicesObject,
     }
   );
-
   if (status === 200) {
     const { Result, ResultCode, records } = devicesResults;
     if (parseInt(`${ResultCode}`) >= 100) {
@@ -194,7 +200,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
     const chunkedRecord = chunk(records, devicesGroupCount);
 
     for (const recordsGroup of chunkedRecord) {
-      const devicesMergedWithRecords: Array<DeviceDetails> = [];
+      let devicesMergedWithRecords: Array<any> = recordsGroup;
       const imeis = compact(
         map(recordsGroup, ({ device_imei }: any) => device_imei)
       );
@@ -202,6 +208,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
         data: { imeis },
       });
       const { records: episodes, ResultCode: episodeCode } = data;
+
       if (episodeCode == 0) {
         forIn(
           groupBy(episodes, "device_imei"),
@@ -210,16 +217,24 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
               recordsGroup,
               ({ device_imei }) => device_imei === imei
             );
-            devicesMergedWithRecords.push({
-              ...(device ?? {}),
-              ...first(orderBy(episodes, ["last_seen"], ["desc"])),
-              total_device_days: reduce(
-                episodes,
-                (totalDays: number, { total_device_days }) =>
-                  parseInt(total_device_days) + totalDays,
-                0
-              ),
-            });
+
+            const deviceIndex = findIndex(
+              devicesMergedWithRecords,
+              ({ device_imei }) => device_imei === imei
+            );
+
+            if (deviceIndex >= 0) {
+              devicesMergedWithRecords[deviceIndex] = {
+                ...(device ?? {}),
+                ...first(orderBy(episodes, ["last_seen"], ["desc"])),
+                total_device_days: reduce(
+                  episodes,
+                  (totalDays: number, { total_device_days }) =>
+                    parseInt(total_device_days) + totalDays,
+                  0
+                ),
+              };
+            }
           }
         );
       }
@@ -228,7 +243,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
         ...sanitizeDeviceList(devicesMergedWithRecords),
       ];
     }
-    res.send({ devices: sanitizedDevices });
+    res.status(200).send({ devices: sanitizedDevices });
   } else {
     res.status(status).send(devicesResults);
   }
@@ -401,10 +416,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     }
     // Creating Episode
     const date = DateTime.now().toFormat("yyyy-MM-dd");
-    console.log(date);
     const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
     const { data } = await wisePillClient.post(createEpisodeUrl);
-    console.log(data);
     const {
       ResultCode: creatEpisodeResultCode,
       Result: message,
@@ -425,7 +438,6 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
           message: `Device ${imei} assigned to ${patientId}`,
         });
       } else {
-        console.log(data);
         res.status(409).send({ message: deviceAssigmnetResult });
       }
     } else {

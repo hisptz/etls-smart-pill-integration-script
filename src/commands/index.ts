@@ -1,15 +1,17 @@
 import { Command } from "commander";
 import { config } from "dotenv";
 import express, { Express } from "express";
+import rateLimit from "express-rate-limit";
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
+import cors from "cors";
+import helmet from "helmet";
+
 import logger from "../logging";
 import { Duration } from "../types";
-import swaggerUi from "swagger-ui-express";
-
 import { authenticate } from "../services";
 import { startIntegrationProcess } from "../services";
-import swaggerJsdoc from "swagger-jsdoc";
 import { wisePillRouter } from "../routes/wise-pill-api.routes";
-import rateLimit from "express-rate-limit";
 
 const swaggerOptions = {
   definition: {
@@ -43,11 +45,11 @@ program
   .description("")
   .option(
     "-s --startDate <startDate>",
-    "Start date for script coverage in DD-MM-YYYY"
+    "Start date for script coverage in YYYY-MM-DD"
   )
   .option(
     "-e --endDate <endDate>",
-    "End date for script coverage in DD-MM-YYYY"
+    "End date for script coverage in YYYY-MM-DD"
   )
   .action(async ({ startDate, endDate }: Duration) => {
     try {
@@ -62,6 +64,12 @@ program
   .description("Initialization of the server for Wisepill integration")
   .action(() => {
     const app: Express = express();
+    app.use(cors());
+    app.use(
+      helmet.contentSecurityPolicy({
+        useDefaults: true,
+      })
+    );
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
     const port = process.env.PORT ?? 3000;
     try {
