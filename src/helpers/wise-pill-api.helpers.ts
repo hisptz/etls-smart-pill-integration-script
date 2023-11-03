@@ -78,6 +78,7 @@ export function getSanitizedAdherence(
       date,
       adherence,
     });
+    daysToRollback++;
   }
 
   return episodeAdherences;

@@ -113,6 +113,7 @@ async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
     }
   );
 
+  //  console.log(JSON.stringify({ trackedEntityInstances }));
   //  await uploadDhis2Events(eventPayloads);
 }
 
@@ -189,7 +190,7 @@ async function getDhis2Events(
   const rootOu = await getRootOrganisationUnit();
 
   while (page <= totalPages && rootOu !== "") {
-    const url = `events?fields=event,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&f&updatedWithin=${eventsLastUpdatedDuration}d&totalPages=true&page=${page}&pageSize=${pageSize}`;
+    const url = `events?fields=event,trackedEntityInstance,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&f&updatedWithin=${eventsLastUpdatedDuration}d&totalPages=true&page=${page}&pageSize=${pageSize}`;
 
     const { data, status } = await dhis2Client.get(url);
     if (status === 200) {
@@ -373,10 +374,37 @@ function getLatestEpisode(episodes: Episode[]): Episode {
 }
 
 //  TODO import the events
-async function uploadDhis2Events(eventPayloads: any): Promise<void> {
-  try {
-    const url = `events?strategy=CREATE_AND_UPDATE`;
-    const response = dhis2Client.post(url, { events: eventPayloads });
-    console.log(JSON.stringify({ response }));
-  } catch (error: any) {}
+async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
+  const paginationSize = 50;
+  logger.info(`Saving ${eventPayloads.length} adherence events into DHIS2`);
+
+  const chunkedEvents = chunk(eventPayloads, paginationSize);
+
+  let page = 1;
+  for (const events of chunkedEvents) {
+    logger.info(
+      `Uploading adherence events to DHIS2: ${page}/${chunkedEvents.length}`
+    );
+    console.log(JSON.stringify({ events }));
+    try {
+      const url = `events?strategy=CREATE_AND_UPDATE`;
+      const { status, data } = await dhis2Client.post(url, {
+        events,
+      });
+
+      if (status === 200) {
+        console.log(JSON.stringify({ response: data }));
+      } else {
+        console.log(JSON.stringify({ response: data }));
+        logger.warn(`Failed to save the the adherence events at page ${page}`);
+      }
+    } catch (error: any) {
+      logger.warn(
+        `Failed to save the the adherence events at page ${page}. Check the error below`
+      );
+      logger.error(error.toString());
+    }
+
+    page++;
+  }
 }
