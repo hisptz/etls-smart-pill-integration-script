@@ -15,7 +15,6 @@ import {
   filter,
   groupBy,
   orderBy,
-  reduce,
   last,
 } from "lodash";
 
@@ -32,6 +31,20 @@ import {
 } from "../helpers/wise-pill-api.helpers";
 import dhis2Client from "../clients/dhis2";
 import { uid } from "@hisptz/dhis2-utils";
+import { DEVICE_SIGNAL_DATA_ELEMENT } from "../constants";
+
+export async function startIntegrationProcess({
+  startDate,
+  endDate,
+}: Duration): Promise<void> {
+  logger.info(
+    `Started integtration with WisePill API ${
+      startDate ? "from " + startDate : ""
+    } ${endDate ? "up to " + endDate : ""}`.trim()
+  );
+
+  await getDhis2TrackedEntityInstancesWithEvents({ startDate, endDate });
+}
 
 function getEventDuration(startDate?: string, endDate?: string): string {
   if (!startDate && !endDate) {
@@ -47,19 +60,6 @@ function getEventDuration(startDate?: string, endDate?: string): string {
   const { days, hours } = end.diff(start, ["days", "hours"]).toObject();
 
   return days ? `${Math.abs(days)}d` : hours ? `${Math.abs(hours)}h` : "24h";
-}
-
-export async function startIntegrationProcess({
-  startDate,
-  endDate,
-}: Duration): Promise<void> {
-  logger.info(
-    `Started integtration with WisePill API ${
-      startDate ? "from " + startDate : ""
-    } ${endDate ? "up to " + endDate : ""}`.trim()
-  );
-
-  await getDhis2TrackedEntityInstancesWithEvents({ startDate, endDate });
 }
 
 async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
@@ -177,7 +177,7 @@ async function getDhis2Events(
   programStage: string,
   duration: Duration
 ): Promise<any> {
-  logger.info(`Fetching DHIS2 events for ${programStage}`);
+  logger.info(`Fetching DHIS2 events for ${programStage} programm stage`);
 
   const { startDate, endDate } = duration;
   const eventsLastUpdatedDuration = getEventDuration(startDate, endDate);
@@ -351,13 +351,35 @@ function getDHIS2EventPayload(
   const sanitizedEventDate = DateTime.fromISO(eventDate).toFormat("yyyy-MM-dd");
   const existingEvent: any =
     events && events.length
-      ? head(filter(events, (eventDate) => eventDate == sanitizedEventDate))
+      ? head(
+          filter(
+            events,
+            ({ eventDate: d2EventDate }) =>
+              DateTime.fromISO(d2EventDate).toFormat("yyyy-MM-dd") ==
+              sanitizedEventDate
+          )
+        )
       : null;
+
   const eventId = existingEvent ? existingEvent["event"] ?? uid() : uid();
+
+  let mergedDataValues: DHIS2DataValue[] = dataValues;
+  if (existingEvent) {
+    mergedDataValues = [
+      ...filter(
+        dataValues,
+        ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT
+      ),
+      ...filter(
+        existingEvent["dataValues"] ?? [],
+        ({ dataElement }) => dataElement !== DEVICE_SIGNAL_DATA_ELEMENT
+      ),
+    ];
+  }
 
   return {
     event: eventId,
-    dataValues,
+    dataValues: mergedDataValues,
     trackedEntityInstance,
     orgUnit,
     program,
