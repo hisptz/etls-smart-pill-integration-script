@@ -16,6 +16,7 @@ import {
 import { addAlarmSchema, createEpisodeSchema } from "../schema";
 import {
   binaryToDecimal,
+  closePreviousLinkedEpisodes,
   getDeviceStatus,
   sanitizeDeviceList,
 } from "../helpers/wise-pill-api.helpers";
@@ -407,13 +408,18 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     data;
 
   if (devicesRequestStatus == 0) {
-    // Unassign the assgined devices
+    // closing previous linked active episodes
+    logger.info(`Closing all episodes linked to ${imei}`);
+    await closePreviousLinkedEpisodes(imei);
+
     const { device_status: deviceStatus } = first(deviceRecords as any[]);
     if (deviceStatus == assignedDeviceStatus) {
+      // Unassign the assgined devices
       logger.info(`Unassigning ${imei}`);
       const unAssignUrl = `devices/unassignDevice?device_imei=${imei}`;
       await wisePillClient.put(unAssignUrl);
     }
+
     // Creating Episode
     const date = DateTime.now().toFormat("yyyy-MM-dd");
     const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
