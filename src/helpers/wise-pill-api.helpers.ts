@@ -1,11 +1,5 @@
-import { map, chunk, find, last } from "lodash";
-import {
-  AdherenceMapping,
-  DHIS2DataValue,
-  Device,
-  DHIS2Event,
-  Episode,
-} from "../types";
+import { map, chunk, find, head } from "lodash";
+import { AdherenceMapping, DHIS2DataValue, Device, Episode } from "../types";
 import {
   BATTERY_HEALTH_DATA_ELEMENT,
   DAMAGED_OR_LOST,
@@ -204,4 +198,29 @@ export function generateDataValuesFromAdherenceMapping(
   }
 
   return dataValues;
+}
+
+export async function closePreviousLinkedEpisodes(
+  deviceImei: string
+): Promise<void> {
+  const activeEpisodeStatus = 1;
+  const getEpisodesUrl = `episodes/getEpisodes?episode_status=${activeEpisodeStatus}&device_imei=${deviceImei}`;
+
+  const { data, status } = await wisePillClient.get(getEpisodesUrl);
+  if (status === 200) {
+    const { ResultCode: episodeRequestStatus, records: episodeRecords }: any =
+      data;
+
+    if (parseInt(`${episodeRequestStatus}`) === 0) {
+      const episode = head(episodeRecords) as any;
+      const { episode_id } = episode;
+      if (episode_id) {
+        const now = DateTime.now().toFormat("yyyy-MM-dd");
+        const unassignEpisodeUrl = `episodes/closeEpisode?episode_id=${episode_id}&episode_end_date=${now}`;
+        await wisePillClient.put(unassignEpisodeUrl);
+      }
+    } else {
+      return;
+    }
+  }
 }
