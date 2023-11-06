@@ -1,19 +1,95 @@
-import {Command} from "commander";
-import appDetails from "../../package.json"
-import logger from "../logging";
-import {printDHIS2Info} from "../clients/sysInfo";
+import { Command } from "commander";
+import { config } from "dotenv";
+import express, { Express } from "express";
+import rateLimit from "express-rate-limit";
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
+import cors from "cors";
+import helmet from "helmet";
 
+import logger from "../logging";
+import { Duration } from "../types";
+import { authenticate } from "../services";
+import { startIntegrationProcess } from "../services";
+import { wisePillRouter } from "../routes/wise-pill-api.routes";
+
+const swaggerOptions = {
+  definition: {
+    openapi: "3.0.0", // OpenAPI version
+    info: {
+      title: "Wisepill and DHIS2 integration API Documentation",
+      version: "1.0.0",
+      description:
+        "API documentation for the Integration API server for Wisepill and DHIS2. This API exposes the required API by the DHIS2 app that manages the integration from the wisepill API specifications",
+    },
+  },
+  apis: ["./**/*.routes.ts"],
+};
+
+const swaggerSpecs = swaggerJsdoc(swaggerOptions);
+
+const apiServerRateLimiter = rateLimit({
+  windowMs: 30 * 1000,
+  limit: 100,
+  message: {
+    status: "429",
+    message: "You have made too many requests, please try again later.",
+  },
+});
+
+config();
 const program = new Command();
 
-program.name("hello-dhis2-script").description("An example program. Delete this when using the template").version(appDetails.version);
+program
+  .command("start-integration")
+  .description("")
+  .option(
+    "-s --startDate <startDate>",
+    "Start date for script coverage in YYYY-MM-DD"
+  )
+  .option(
+    "-e --endDate <endDate>",
+    "End date for script coverage in YYYY-MM-DD"
+  )
+  .action(async ({ startDate, endDate }: Duration) => {
+    try {
+      await startIntegrationProcess({ startDate, endDate });
+    } catch (error: any) {
+      logger.error(error.toString());
+    }
+  });
 
-program.command("say-hi").option("-n --name <name>", "The name of the user").action((args) => {
-    const {name} = args ?? {}
-    //Here you can call any of your functions to do what is necessary. Use the args to access the argument object as specified on the options
-    logger.info(`Hello ${name}, Welcome to the dhis2-node-script`)
-})
+program
+  .command("start-api-server")
+  .description("Initialization of the server for Wisepill integration")
+  .action(() => {
+    const app: Express = express();
+    app.use(cors());
+    app.use(
+      helmet.contentSecurityPolicy({
+        useDefaults: true,
+      })
+    );
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
+    const port = process.env.PORT ?? 3000;
+    try {
+      app.use(express.json());
+      app.use(express.urlencoded({ extended: true }));
+      app.use(apiServerRateLimiter);
 
-program.command(`dhis2-info`).description("Print out connected DHIS2 instance information").action(async () => {
-    await printDHIS2Info()
-})
+      if (process.env.SECRET_KEY) {
+        app.use(authenticate);
+      }
+
+      app.use("/api", wisePillRouter);
+
+      app.listen(port, () => {
+        logger.info(
+          `⚡️[server]: Server is running at http://localhost:${port}`
+        );
+      });
+    } catch (error: any) {
+      logger.error(error.toString());
+    }
+  });
 export default program;

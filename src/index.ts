@@ -1,5 +1,5 @@
-import {config} from "dotenv";
+import { config } from "dotenv";
 import program from "./commands";
 
-config()
-program.parse(process.argv)
+config();
+program.parse(process.argv);
