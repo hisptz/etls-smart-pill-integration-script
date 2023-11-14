@@ -18,10 +18,10 @@ async function getDataStoreSettings(): Promise<any> {
 }
 
 export async function getAssignedDevices(): Promise<string[]> {
-  const { deviceEmeiList } = await getDataStoreSettings();
-  return deviceEmeiList
+  const { deviceIMEIList: devices } = await getDataStoreSettings();
+  return devices
     ? map(
-        filter(deviceEmeiList, ({ inUse }) => inUse),
+        filter(devices, ({ inUse }) => inUse),
         ({ code }) => code
       )
     : [];
@@ -52,7 +52,20 @@ export function logImportSummary(response: any) {
     );
     if (latestImportSummary) {
       const { description } = latestImportSummary;
-      logger.warn(description);
+      logger.error(description);
     }
+  }
+}
+
+export function logSanitizedConflictsImportSummary(errorResponse: any): void {
+  if (errorResponse.response) {
+    const { response } = errorResponse.response.data;
+    if (response) {
+      logImportSummary(response);
+    } else {
+      logger.error(errorResponse.response);
+    }
+  } else {
+    logger.error(errorResponse.message ?? errorResponse.toString());
   }
 }
