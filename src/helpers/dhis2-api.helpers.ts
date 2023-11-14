@@ -18,10 +18,10 @@ async function getDataStoreSettings(): Promise<any> {
 }
 
 export async function getAssignedDevices(): Promise<string[]> {
-  const { deviceEmeiList } = await getDataStoreSettings();
-  return deviceEmeiList
+  const { deviceIMEIList: devices } = await getDataStoreSettings();
+  return devices
     ? map(
-        filter(deviceEmeiList, ({ inUse }) => inUse),
+        filter(devices, ({ inUse }) => inUse),
         ({ code }) => code
       )
     : [];
