@@ -37,14 +37,47 @@ export async function startIntegrationProcess({
   startDate,
   endDate,
 }: Duration): Promise<void> {
-  logger.info(
-    `Started integration with WisePill API ${
-      startDate ? "from " + startDate : ""
-    } ${endDate ? "up to " + endDate : ""}`.trim() +
-      `at ${DateTime.now().toISO()}`
-  );
+  try {
+    logger.info(
+      `Started integration with WisePill API ${
+        startDate ? "from " + startDate : ""
+      } ${endDate ? "up to " + endDate : ""}`.trim() +
+        ` at ${DateTime.now().toISO()}`
+    );
 
-  await getDhis2TrackedEntityInstancesWithEvents({ startDate, endDate });
+    const { program, programStage, attributes } = await getProgramMapping();
+    if (!program || !programStage || !attributes) {
+      logger.warn(`There are program metadata configured for migration`);
+      logger.error("Terminating the integration script!");
+      return;
+    }
+
+    logger.info("Fetching DAT devices assigned in DHIS2.");
+    const assignedDevices = await getAssignedDevices();
+
+    const trackedEntityInstances =
+      await getDhis2TrackedEntityInstancesWithEvents(
+        { program, programStage, attributes },
+        assignedDevices,
+        { startDate, endDate }
+      );
+
+    logger.info("Fetching Adherence episodes from Wisepill.");
+    const episodes = await getDevicesWisepillEpisodes(assignedDevices);
+
+    const eventPayloads = generateEventPayload(
+      episodes,
+      trackedEntityInstances,
+      program,
+      programStage,
+      {
+        startDate,
+        endDate,
+      }
+    );
+
+    await uploadDhis2Events(eventPayloads);
+  } catch (error: any) {}
 
   logger.info(
     `Terminating the integration process at ${DateTime.now().toISO()}`
@@ -67,21 +100,17 @@ function getEventDuration(startDate?: string, endDate?: string): string {
   return days ? `${Math.abs(days)}d` : hours ? `${Math.abs(hours)}h` : "24h";
 }
 
-async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
+async function getDhis2TrackedEntityInstancesWithEvents(
+  programMapping: any,
+  assignedDevices: string[],
+  duration: Duration
+): Promise<{ [key: string]: string }[]> {
   logger.info("Fetching DHIS2 program mappings.");
-  const { program, programStage, attributes } = await getProgramMapping();
-  if (!program || !programStage || !attributes) {
-    logger.warn(`There are program metadata configured for migration`);
-    logger.error("Terminating the integration script!");
-    return;
-  }
-
-  logger.info("Fetching DAT devices assigned in DHIS2.");
-  const deviceIMEI = await getAssignedDevices();
+  const { program, programStage, attributes } = programMapping;
 
   let trackedEntityInstances = await getDhis2TrackedEntityInstances(
     program,
-    deviceIMEI,
+    assignedDevices,
     attributes
   );
 
@@ -105,21 +134,7 @@ async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
     }
   );
 
-  logger.info("Fetching Adherence episodes from Wisepill.");
-  const episodes = await getDevicesWisepillEpisodes(deviceIMEI);
-
-  const eventPayloads = generateEventPayload(
-    episodes,
-    trackedEntityInstances,
-    program,
-    programStage,
-    {
-      startDate,
-      endDate,
-    }
-  );
-
-  await uploadDhis2Events(eventPayloads);
+  return trackedEntityInstances;
 }
 
 async function getDhis2TrackedEntityInstances(
@@ -170,7 +185,9 @@ async function getDhis2TrackedEntityInstances(
       logger.warn(
         `Failed to fetch tracked entity instances. Check the error below!`
       );
-      logger.error(error.toString());
+      logger.error(
+        error.response ? error.response.data : error.message ?? error.toString()
+      );
     }
     page++;
   }
@@ -438,7 +455,9 @@ async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
       logger.warn(
         `Failed to save the the adherence events at page ${page}. Check the error below`
       );
-      logger.error(error.message ?? error.toString());
+      logger.error(
+        error.response ? error.response.data : error.message ?? error.toString()
+      );
     }
 
     page++;
