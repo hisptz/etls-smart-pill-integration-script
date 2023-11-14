@@ -52,7 +52,20 @@ export function logImportSummary(response: any) {
     );
     if (latestImportSummary) {
       const { description } = latestImportSummary;
-      logger.warn(description);
+      logger.error(description);
     }
+  }
+}
+
+export function logSanitizedConflictsImportSummary(errorResponse: any): void {
+  if (errorResponse.response) {
+    const { response } = errorResponse.response.data;
+    if (response) {
+      logImportSummary(response);
+    } else {
+      logger.error(errorResponse.response);
+    }
+  } else {
+    logger.error(errorResponse.message ?? errorResponse.toString());
   }
 }
