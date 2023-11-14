@@ -40,10 +40,15 @@ export async function startIntegrationProcess({
   logger.info(
     `Started integration with WisePill API ${
       startDate ? "from " + startDate : ""
-    } ${endDate ? "up to " + endDate : ""}`.trim()
+    } ${endDate ? "up to " + endDate : ""}`.trim() +
+      `at ${DateTime.now().toISO()}`
   );
 
   await getDhis2TrackedEntityInstancesWithEvents({ startDate, endDate });
+
+  logger.info(
+    `Terminating the integration process at ${DateTime.now().toISO()}`
+  );
 }
 
 function getEventDuration(startDate?: string, endDate?: string): string {
