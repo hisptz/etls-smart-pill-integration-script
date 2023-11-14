@@ -23,6 +23,7 @@ import {
   getAssignedDevices,
   getProgramMapping,
   logImportSummary,
+  logSanitizedConflictsImportSummary,
 } from "../helpers/dhis2-api.helpers";
 import {
   generateDataValuesFromAdherenceMapping,
@@ -185,9 +186,7 @@ async function getDhis2TrackedEntityInstances(
       logger.warn(
         `Failed to fetch tracked entity instances. Check the error below!`
       );
-      logger.error(
-        error.response ? error.response.data : error.message ?? error.toString()
-      );
+      logSanitizedConflictsImportSummary(error);
     }
     page++;
   }
@@ -370,7 +369,9 @@ function getDHIS2EventPayload(
   events: any[],
   dataValues: DHIS2DataValue[]
 ): DHIS2Event {
-  const sanitizedEventDate = DateTime.fromISO(eventDate).toFormat("yyyy-MM-dd");
+  const sanitizedEventDate = DateTime.fromISO(
+    eventDate.replace(/ /g, "T")
+  ).toFormat("yyyy-MM-dd");
   const existingEvent: any =
     events && events.length
       ? head(
@@ -455,9 +456,7 @@ async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
       logger.warn(
         `Failed to save the the adherence events at page ${page}. Check the error below`
       );
-      logger.error(
-        error.response ? error.response.data : error.message ?? error.toString()
-      );
+      logSanitizedConflictsImportSummary(error);
     }
 
     page++;
