@@ -38,7 +38,7 @@ export async function startIntegrationProcess({
   endDate,
 }: Duration): Promise<void> {
   logger.info(
-    `Started integtration with WisePill API ${
+    `Started integration with WisePill API ${
       startDate ? "from " + startDate : ""
     } ${endDate ? "up to " + endDate : ""}`.trim()
   );
@@ -72,11 +72,11 @@ async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
   }
 
   logger.info("Fetching DAT devices assigned in DHIS2.");
-  const deviceImeis = await getAssignedDevices();
+  const deviceIMEI = await getAssignedDevices();
 
   let trackedEntityInstances = await getDhis2TrackedEntityInstances(
     program,
-    deviceImeis,
+    deviceIMEI,
     attributes
   );
 
@@ -101,7 +101,7 @@ async function getDhis2TrackedEntityInstancesWithEvents(duration: Duration) {
   );
 
   logger.info("Fetching Adherence episodes from Wisepill.");
-  const episodes = await getDevicesWisepillEpisodes(deviceImeis);
+  const episodes = await getDevicesWisepillEpisodes(deviceIMEI);
 
   const eventPayloads = generateEventPayload(
     episodes,
@@ -154,7 +154,7 @@ async function getDhis2TrackedEntityInstances(
           }
         );
         logger.info(
-          `Feteched tracked entity instances from ${program} program: ${page}/${chunkedDevices.length}`
+          `Fetched tracked entity instances from ${program} program: ${page}/${chunkedDevices.length}`
         );
       } else {
         logger.warn(
@@ -177,7 +177,7 @@ async function getDhis2Events(
   programStage: string,
   duration: Duration
 ): Promise<any> {
-  logger.info(`Fetching DHIS2 events for ${programStage} programm stage`);
+  logger.info(`Fetching DHIS2 events for ${programStage} program stage`);
 
   const { startDate, endDate } = duration;
   const eventsLastUpdatedDuration = getEventDuration(startDate, endDate);
@@ -254,11 +254,11 @@ function generateEventPayload(
       `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntityInstance} assigned to device ${imei}`
     );
     if (teiEpisodes && teiEpisodes.length) {
-      const cummulativeEpisodes = getLatestEpisode(teiEpisodes);
+      const cumulativeEpisodes = getLatestEpisode(teiEpisodes);
       const { adherenceString, lastSeen, batteryLevel, deviceStatus, imei } =
-        cummulativeEpisodes;
+        cumulativeEpisodes;
 
-      const adherences = (adherenceString ?? "").split(",");
+      const adherence = (adherenceString ?? "").split(",");
 
       // if not range is specified
       if (!startDate && !endDate) {
@@ -268,7 +268,7 @@ function generateEventPayload(
         // if the last seen for the episode is the current day
         if ((now.diff(lastSeenDate, ["days"]).toObject().days ?? 0) < 1) {
           const episodeAdherence: AdherenceMapping = {
-            adherence: last(adherences) ?? "0",
+            adherence: last(adherence) ?? "0",
             date: lastSeen,
           };
           const dataValues = generateDataValuesFromAdherenceMapping(
@@ -294,7 +294,7 @@ function generateEventPayload(
         }
       } else {
         // if there is some range specified
-        const episodeAdherences = getSanitizedAdherence(adherences, lastSeen);
+        const episodeAdherence = getSanitizedAdherence(adherence, lastSeen);
 
         // evaluation of the range for running the script
         const evaluationStartDate = startDate
@@ -304,7 +304,7 @@ function generateEventPayload(
           ? DateTime.fromISO(endDate)
           : DateTime.now();
 
-        for (const { adherence, date } of episodeAdherences) {
+        for (const { adherence, date } of episodeAdherence) {
           const adherenceDate = DateTime.fromISO(date);
 
           // If the adherence date is within the range for running the script
@@ -418,7 +418,7 @@ async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
 
       if (status === 200) {
         logger.info(
-          `Successfuly saved adherence events ${page}/${chunkedEvents.length}`
+          `Successfully saved adherence events ${page}/${chunkedEvents.length}`
         );
         const { response: importResponse } = data;
         logImportSummary(importResponse);
