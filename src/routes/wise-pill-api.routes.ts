@@ -284,6 +284,9 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
  *                 batteryLevel:
  *                   type: number
  *                   description: The last recorded device battery level
+ *                 alarmDays:
+ *                   type: string
+ *                   description: The alarm days in binary representation of days of the week, SMTWTFS in a string format. e.g. 1111111
  *                 refillAlarm:
  *                   type: string
  *                   description: Alarm time set for refelling the device with medications
