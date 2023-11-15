@@ -1,7 +1,7 @@
 import { WEB_APP_DATASTORE_KEY } from "../constants";
 import dhis2Client from "../clients/dhis2";
 import logger from "../logging";
-import { filter, map, find } from "lodash";
+import { filter, map, find, head } from "lodash";
 
 async function getDataStoreSettings(): Promise<any> {
   const url = `dataStore/${WEB_APP_DATASTORE_KEY}/settings`;
@@ -51,8 +51,20 @@ export function logImportSummary(response: any) {
       ({ importCount }) => importCount.ignored
     );
     if (latestImportSummary) {
-      const { description } = latestImportSummary;
-      logger.error(description);
+      const { description, conflicts } = latestImportSummary;
+      if (description) {
+        logger.error(description);
+      } else if (conflicts) {
+        const { object, value: message } = (head(conflicts) ?? {}) as Record<
+          string,
+          string
+        >;
+        logger.error(
+          object && message
+            ? `Conflicts at ${object} object: ${message}`
+            : `Failed to evaluate import summary conflicts`
+        );
+      }
     }
   }
 }
