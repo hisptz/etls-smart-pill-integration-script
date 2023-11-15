@@ -17,6 +17,7 @@ import { addAlarmSchema, createEpisodeSchema } from "../schema";
 import {
   binaryToDecimal,
   closePreviousLinkedEpisodes,
+  decimalToBinary,
   getDeviceStatus,
   sanitizeDeviceList,
 } from "../helpers/wise-pill-api.helpers";
@@ -102,7 +103,7 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
   if (alarm) {
     const alarmDays = days ? binaryToDecimal(days) : 127;
     const { data } = await wisePillClient.put(
-      `devices/setAlarm?refill_alarm=1&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
+      `devices/setAlarm?alarm=1&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
     );
     const { ResultCode: alarmCode, Result: alarmResult } = data;
     if (alarmCode >= 100) {
@@ -311,15 +312,17 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
       res.status(409).send({ message: Result, code: ResultCode });
     } else {
       const {
-        alarm,
+        alarm_time,
         refill_alarm_datetime,
         last_battery_level,
         last_opened,
+        alarm_days,
         last_seen,
         device_status,
       } = head(records) as any;
       const deviceObject: DeviceDetails = {
-        alarmTime: alarm ?? "",
+        alarmDays: alarm_days ? decimalToBinary(alarm_days) : "",
+        alarmTime: alarm_time ?? "",
         refillAlarm: refill_alarm_datetime ?? "",
         batteryLevel: parseInt(`${last_battery_level}`) / 100,
         lastOpened: last_opened ?? "",
