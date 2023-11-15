@@ -33,6 +33,27 @@ export function binaryToDecimal(binaryString: string): number {
   return decimalValue;
 }
 
+export function decimalToBinary(decimalValue: number): string {
+  if (decimalValue < 0 || decimalValue > 127) {
+    // Ensure the decimal value is within the valid range (0 to 127)
+    return "Invalid input";
+  }
+
+  let binaryString = "";
+
+  for (let i = 6; i >= 0; i--) {
+    const power = Math.pow(2, i);
+    if (decimalValue >= power) {
+      binaryString += "1";
+      decimalValue -= power;
+    } else {
+      binaryString += "0";
+    }
+  }
+
+  return binaryString;
+}
+
 export function getDeviceStatus(status: string): string {
   const statusCode = parseInt(status);
   return statusCode == 1
