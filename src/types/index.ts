@@ -4,6 +4,7 @@ export interface Duration {
 }
 
 export interface DeviceDetails {
+  alarmDays?: string;
   alarmTime?: string;
   refillAlarm?: string;
   batteryLevel: number;
