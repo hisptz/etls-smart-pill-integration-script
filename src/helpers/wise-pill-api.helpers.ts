@@ -130,7 +130,7 @@ export async function getDevicesWisepillEpisodes(
   const episodeUrl = `episodes/getEpisodes`;
   const deviceFetchUrl = `devices/getDeviceDetail`;
   const sanitizedEpisodes: Episode[] = [];
-  const imeiGroupCount = 50;
+  const imeiGroupCount = 100;
   const chunckedImeis = chunk(deviceImeis, imeiGroupCount);
 
   let fetchCount = 0;
@@ -188,6 +188,10 @@ export async function getDevicesWisepillEpisodes(
   return sanitizedEpisodes;
 }
 
+export function sanitizeDatesIntoDateTime(date: string): string {
+  return date.replace(/ /g, "T");
+}
+
 export function generateDataValuesFromAdherenceMapping(
   { adherence, date }: AdherenceMapping,
   batteryLevel?: number,
@@ -196,7 +200,7 @@ export function generateDataValuesFromAdherenceMapping(
   const dataValues: Array<DHIS2DataValue> = [
     {
       dataElement: DOSAGE_TIME_DATA_ELEMENT,
-      value: date,
+      value: sanitizeDatesIntoDateTime(date),
     },
     {
       dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
