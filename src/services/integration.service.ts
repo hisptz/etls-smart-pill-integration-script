@@ -29,6 +29,7 @@ import {
   generateDataValuesFromAdherenceMapping,
   getDevicesWisepillEpisodes,
   getSanitizedAdherence,
+  sanitizeDatesIntoDateTime,
 } from "../helpers/wise-pill-api.helpers";
 import dhis2Client from "../clients/dhis2";
 import { uid } from "@hisptz/dhis2-utils";
@@ -211,8 +212,7 @@ async function getDhis2Events(
   const rootOu = await getRootOrganisationUnit();
 
   while (page <= totalPages && rootOu !== "") {
-    const url = `events?fields=event,trackedEntityInstance,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&f&updatedWithin=${eventsLastUpdatedDuration}d&totalPages=true&page=${page}&pageSize=${pageSize}`;
-
+    const url = `events?fields=event,trackedEntityInstance,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&lastUpdatedDuration=${eventsLastUpdatedDuration}&totalPages=true&page=${page}&pageSize=${pageSize}`;
     const { data, status } = await dhis2Client.get(url);
     if (status === 200) {
       const { events, pager } = data;
@@ -370,7 +370,7 @@ function getDHIS2EventPayload(
   dataValues: DHIS2DataValue[]
 ): DHIS2Event {
   const sanitizedEventDate = DateTime.fromISO(
-    eventDate.replace(/ /g, "T")
+    sanitizeDatesIntoDateTime(eventDate)
   ).toFormat("yyyy-MM-dd");
   const existingEvent: any =
     events && events.length
