@@ -2,7 +2,9 @@
 
 ## Introduction
 
-This is a node script that integrates the DHIS2 TB instances with the Wisepill API for adherence. This Script runs the migration between the two systems, but also exposes the API to be used by the DHIS2 instance for accessing the Wisepill adherence data
+This is a node script that integrates the DHIS2 TB instances with the Wisepill API for adherence. This Script runs the
+migration between the two systems, but also exposes the API to be used by the DHIS2 instance for accessing the Wisepill
+adherence data
 
 ## Getting started
 
@@ -33,6 +35,7 @@ DHIS2_PASSWORD=<dhis2-password>
 WISEPILL_BASE_URL=<wisepill-api-url>
 WISEPILL_USERNAME=<wisepill-username>
 WISEPILL_SECRET=<wisepill-secret-key>
+TIME_ZONE=<time-zone>
 PORT=<port-for-api-server>
 SECRET_KEY=<optional-secret-key-for-api>
 ```

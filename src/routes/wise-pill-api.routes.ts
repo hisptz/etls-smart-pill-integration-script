@@ -26,6 +26,7 @@ import { DeviceDetails } from "../types";
 import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
 import logger from "../logging";
 import { DateTime } from "luxon";
+import { getSystemTimeZone } from "../helpers/system.helpers";
 
 export const wisePillRouter = Router();
 
@@ -421,7 +422,7 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     const { device_status: deviceStatus } = first(deviceRecords as any[]);
     if (deviceStatus == assignedDeviceStatus) {
       // Unassign the assgined devices
-      logger.info(`Unassigning ${imei}`);
+      logger.info(`Unassigning device ${imei} from previous linkages`);
       const unAssignUrl = `devices/unassignDevice?device_imei=${imei}`;
       await wisePillClient.put(unAssignUrl);
     }
@@ -445,9 +446,14 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
         Result: deviceAssigmnetResult,
       }: any = data;
       if (deviceAssignmentCode == 0) {
+        // updating the device timezone
+        const timeZone = getSystemTimeZone();
+        const setTimeZoneUrl = `devices/setTimezone?device_imei=${imei}&timezone=${timeZone}`;
+        await wisePillClient.put(setTimeZoneUrl);
+
         res.status(201).send({
           status: 201,
-          message: `Device ${imei} assigned to ${patientId}`,
+          message: `Device ${imei} assigned to ${patientId} at timezone ${timeZone}`,
         });
       } else {
         res.status(409).send({ message: deviceAssigmnetResult });
