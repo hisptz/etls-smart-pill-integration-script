@@ -27,9 +27,9 @@ export async function getAssignedDevices(): Promise<string[]> {
     : [];
 }
 
-export async function getProgramMapping(): Promise<any> {
+export async function getProgramMapping(): Promise<any[]> {
   const { programMapping } = await getDataStoreSettings();
-  return programMapping ?? {};
+  return programMapping ?? [];
 }
 
 export function logImportSummary(response: any) {
