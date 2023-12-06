@@ -23,7 +23,10 @@ import {
 } from "../helpers/wise-pill-api.helpers";
 import wisePillClient from "../clients/wise-pill";
 import { DeviceDetails } from "../types";
-import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
+import {
+  getAssignedDevices,
+  updateDATEnrollmentStatus,
+} from "../helpers/dhis2-api.helpers";
 import logger from "../logging";
 import { DateTime } from "luxon";
 import { getSystemTimeZone } from "../helpers/system.helpers";
@@ -450,6 +453,9 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
         const timeZone = getSystemTimeZone();
         const setTimeZoneUrl = `devices/setTimezone?device_imei=${imei}&timezone=${timeZone}`;
         await wisePillClient.put(setTimeZoneUrl);
+
+        // creating an enrollment signal in DHIS2
+        await updateDATEnrollmentStatus(patientId);
 
         res.status(201).send({
           status: 201,
