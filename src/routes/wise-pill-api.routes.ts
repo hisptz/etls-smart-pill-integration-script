@@ -23,7 +23,10 @@ import {
 } from "../helpers/wise-pill-api.helpers";
 import wisePillClient from "../clients/wise-pill";
 import { DeviceDetails } from "../types";
-import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
+import {
+  getAssignedDevices,
+  updateDATEnrollmentStatus,
+} from "../helpers/dhis2-api.helpers";
 import logger from "../logging";
 import { DateTime } from "luxon";
 import { getSystemTimeZone } from "../helpers/system.helpers";
@@ -41,7 +44,7 @@ export const wisePillRouter = Router();
  */
 wisePillRouter.get("/", (req: Request, res: Response) => {
   const response = {
-    messsage:
+    message:
       "Welcome to the Wisepill and DHIS2 integration API. Go to {server}/docs for the documentation",
   };
   res.status(200).send(response);
@@ -132,7 +135,7 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
   if (!refillAlarm && !alarm) {
     return res
       .status(409)
-      .json({ status: 409, message: "No alarm was specifiied" });
+      .json({ status: 409, message: "No alarm was specified" });
   }
 
   return res.status(201).json({ message: "Alarm set successfully" });
@@ -162,7 +165,7 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
  *                         description: Device IMEI number
  *                       lastHeartBeat:
  *                         type: string
- *                         description: Time for the last heart beath received by the
+ *                         description: Time for the last heart beat received by the
  *                       email:
  *                         type: string
  *                         format: email
@@ -182,7 +185,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
     return res.status(200).json({ devices: sanitizedDevices });
   }
 
-  const assginedDevicesObject = {
+  const assignedDevicesObject = {
     data: {
       imeis: assignedDevices,
     },
@@ -191,7 +194,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
   const { status, data: devicesResults } = await wisePillClient.get(
     deviceFetchUrl,
     {
-      data: assginedDevicesObject,
+      data: assignedDevicesObject,
     }
   );
   if (status === 200) {
@@ -264,7 +267,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
  *         in: query
  *         required: true
  *         schema:
- *           type: strin
+ *           type: string
  *     responses:
  *       200:
  *         description: Success
@@ -290,7 +293,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
  *                   description: The alarm days in binary representation of days of the week, SMTWTFS in a string format. e.g. 1111111
  *                 refillAlarm:
  *                   type: string
- *                   description: Alarm time set for refelling the device with medications
+ *                   description: Alarm time set for refilling the device with medications
  *                 alarmTime:
  *                   type: string
  *                   description: Alarm time set for taking medications
@@ -375,7 +378,7 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
  *                   description: Success message
  *                 status:
  *                   type: number
- *                   description: HTTP ststus code
+ *                   description: HTTP status code
  *       409:
  *         description: Encountered conflicts on assigning device. A descriptive message of reason will be sent in the response body.
  *         content:
@@ -421,8 +424,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
 
     const { device_status: deviceStatus } = first(deviceRecords as any[]);
     if (deviceStatus == assignedDeviceStatus) {
-      // Unassign the assgined devices
-      logger.info(`Unassigning device ${imei} from previous linkages`);
+      // Unassign the assigned devices
+      logger.info(`Unassign device ${imei} from previous linkages`);
       const unAssignUrl = `devices/unassignDevice?device_imei=${imei}`;
       await wisePillClient.put(unAssignUrl);
     }
@@ -432,18 +435,18 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
     const { data } = await wisePillClient.post(createEpisodeUrl);
     const {
-      ResultCode: creatEpisodeResultCode,
+      ResultCode: createEpisodeResultCode,
       Result: message,
       episode_id: episodeId,
     }: any = data;
 
-    if (creatEpisodeResultCode == 0 && episodeId) {
+    if (createEpisodeResultCode == 0 && episodeId) {
       // Assigning episode to device
       const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${imei}`;
       const { data } = await wisePillClient.put(assignDeviceUrl);
       const {
         ResultCode: deviceAssignmentCode,
-        Result: deviceAssigmnetResult,
+        Result: deviceAssignmentResult,
       }: any = data;
       if (deviceAssignmentCode == 0) {
         // updating the device timezone
@@ -451,17 +454,20 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
         const setTimeZoneUrl = `devices/setTimezone?device_imei=${imei}&timezone=${timeZone}`;
         await wisePillClient.put(setTimeZoneUrl);
 
+        // creating an enrollment signal in DHIS2
+        await updateDATEnrollmentStatus(patientId);
+
         res.status(201).send({
           status: 201,
           message: `Device ${imei} assigned to ${patientId} at timezone ${timeZone}`,
         });
       } else {
-        res.status(409).send({ message: deviceAssigmnetResult });
+        res.status(409).send({ message: deviceAssignmentResult });
       }
     } else {
       res.status(409).send({
         message:
-          creatEpisodeResultCode == 1
+          createEpisodeResultCode == 1
             ? `Episode already exist for ${imei}`
             : message ?? `Failed to create Episode for ${imei}`,
       });

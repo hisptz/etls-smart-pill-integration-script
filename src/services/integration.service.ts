@@ -21,6 +21,7 @@ import {
 import logger from "../logging";
 import {
   getAssignedDevices,
+  getDhis2TrackedEntityInstancesByAttribute,
   getProgramMapping,
   logImportSummary,
   logSanitizedConflictsImportSummary,
@@ -130,10 +131,10 @@ async function getDhis2TrackedEntityInstancesWithEvents(
 ): Promise<{ [key: string]: string }[]> {
   const { program, programStage, attributes } = programMapping;
 
-  let trackedEntityInstances = await getDhis2TrackedEntityInstances(
+  let trackedEntityInstances = await getDhis2TrackedEntityInstancesByAttribute(
     program,
     assignedDevices,
-    attributes
+    attributes["deviceIMEInumber"]
   );
 
   const { startDate, endDate } = duration;
@@ -157,62 +158,6 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   );
 
   return trackedEntityInstances;
-}
-
-async function getDhis2TrackedEntityInstances(
-  program: string,
-  assignedDevises: string[],
-  attributes: { [key: string]: string }
-): Promise<Array<{ [key: string]: any }>> {
-  logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
-  const sanitizedTrackedEntityInstances: { [key: string]: string }[] = [];
-  const pageSize = 100;
-  const { deviceIMEInumber: imeiAttribute } = attributes;
-
-  const chunkedDevices = chunk(assignedDevises, pageSize);
-
-  let page = 1;
-  for (const devices of chunkedDevices) {
-    try {
-      const url = `trackedEntityInstances.json?fields=attributes,orgUnit,trackedEntityInstance&ouMode=ALL&filter=${imeiAttribute}:in:${devices.join(
-        ";"
-      )}&program=${program}&paging=false`;
-
-      const { data, status } = await dhis2Client.get(url);
-      if (status === 200) {
-        const { trackedEntityInstances } = data;
-        forEach(
-          trackedEntityInstances,
-          ({ attributes, trackedEntityInstance, orgUnit }) => {
-            const { value: imei } = find(
-              attributes,
-              ({ attribute }) => attribute === imeiAttribute
-            );
-            sanitizedTrackedEntityInstances.push({
-              imei,
-              trackedEntityInstance,
-              orgUnit,
-            });
-          }
-        );
-        logger.info(
-          `Fetched tracked entity instances from ${program} program: ${page}/${chunkedDevices.length}`
-        );
-      } else {
-        logger.warn(
-          `Failed to fetch tracked entity instances for ${page} page`
-        );
-      }
-    } catch (error: any) {
-      logger.warn(
-        `Failed to fetch tracked entity instances. Check the error below!`
-      );
-      logSanitizedConflictsImportSummary(error);
-    }
-    page++;
-  }
-
-  return sanitizedTrackedEntityInstances;
 }
 
 async function getDhis2Events(
@@ -470,7 +415,7 @@ async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
       }
     } catch (error: any) {
       logger.warn(
-        `Failed to save the the adherence events at page ${page}. Check the error below`
+        `Failed to save the adherence events at page ${page}. Check the error below`
       );
       logSanitizedConflictsImportSummary(error);
     }
