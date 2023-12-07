@@ -1,6 +1,6 @@
 // DHIS2 Metadata
 // DHIS2 Datastore
-export const WEB_APP_DATASTORE_KEY = "hisptz-dat-app";
+export const WEB_APP_DATASTORE_KEY = "dat-app";
 
 //DHIS2 data elements
 export const DEVICE_HEALTH_DATA_ELEMENT = "QH0OjHcBBpO";

@@ -1,3 +1,5 @@
+import { filter, map, find, head, chunk, forEach, flattenDeep } from "lodash";
+import { mapLimit, asyncify } from "async";
 import {
   DEVICE_SIGNAL_DATA_ELEMENT,
   DOSAGE_TIME_DATA_ELEMENT,
@@ -6,7 +8,6 @@ import {
 } from "../constants";
 import dhis2Client from "../clients/dhis2";
 import logger from "../logging";
-import { filter, map, find, head, chunk, forEach } from "lodash";
 import { DateTime } from "luxon";
 import { DHIS2Event } from "../types";
 import { uid } from "@hisptz/dhis2-utils";
@@ -96,51 +97,52 @@ export async function updateDATEnrollmentStatus(
   try {
     const now = DateTime.now().toISO();
     const eventDate = DateTime.now().toFormat("yyyy-MM-dd");
-    const programMapping = await getProgramMapping();
+    const programMappings = await getProgramMapping();
 
-    if (programMapping) {
-      const {
-        program,
-        programStage,
-        attributes: mappedAttributes,
-      } = programMapping;
-      const patientNumberAttribute = mappedAttributes["patientNumber"];
+    if (programMappings && programMappings.length) {
+      const events = flattenDeep(
+        await mapLimit(
+          programMappings,
+          5,
+          asyncify(
+            async ({
+              program,
+              programStage,
+              attributes: mappedAttributes,
+            }: any): Promise<DHIS2Event[]> => {
+              const patientNumberAttribute = mappedAttributes["patientNumber"];
+              const tei = await getDhis2TrackedEntityInstancesByAttribute(
+                program,
+                [patientNumber],
+                patientNumberAttribute
+              );
 
-      const { trackedEntityInstance, orgUnit } =
-        head(
-          await getDhis2TrackedEntityInstancesByAttribute(
-            program,
-            [patientNumber],
-            patientNumberAttribute
+              return tei.map(({ trackedEntityInstance, orgUnit }) => ({
+                event: uid(),
+                program,
+                programStage,
+                orgUnit,
+                trackedEntityInstance,
+                eventDate,
+                status: "ACTIVE",
+                dataValues: [
+                  {
+                    dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
+                    value: ENROLLMENT_SIGNAL,
+                  },
+                  {
+                    dataElement: DOSAGE_TIME_DATA_ELEMENT,
+                    value: now ?? "",
+                  },
+                ],
+              }));
+            }
           )
-        ) ?? {};
-
-      if (trackedEntityInstance && orgUnit) {
-      }
-
-      const event: DHIS2Event = {
-        event: uid(),
-        program,
-        programStage,
-        orgUnit,
-        trackedEntityInstance,
-        eventDate,
-        status: "ACTIVE",
-        dataValues: [
-          {
-            dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
-            value: ENROLLMENT_SIGNAL,
-          },
-          {
-            dataElement: DOSAGE_TIME_DATA_ELEMENT,
-            value: now ?? "",
-          },
-        ],
-      };
-
+        )
+      );
       const url = `events?strategy=CREATE_AND_UPDATE`;
       const { status, data } = await dhis2Client.post(url, {
-        events: [event],
+        events,
       });
 
       if (status === 200) {
@@ -207,12 +209,11 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
       }
     } catch (error: any) {
       logger.warn(
-        `Failed to fetch tracked entity instances. Check the error below!`
+        `Failed to fetch tracked entity instances from ${program}. Check the error below!`
       );
       logSanitizedConflictsImportSummary(error);
     }
     page++;
   }
-
   return sanitizedTrackedEntityInstances;
 }
