@@ -61,10 +61,9 @@ export async function startIntegrationProcess({
     }
 
     for (const { program, programStage, attributes } of programMapping) {
-      console.log(JSON.stringify({ program, programStage, attributes }));
       if (!program || !programStage || !attributes) {
         logger.warn(
-          `There are program mapping is wrongly configured! Revisit configurations to ensure program, programtStage and attributes are well configured`
+          `There are program mapping is wrongly configured! Revisit configurations to ensure program, program and attributes are well configured`
         );
         break;
       }
