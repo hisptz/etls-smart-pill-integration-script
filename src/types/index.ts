@@ -8,7 +8,7 @@ export type Episode = {
   adherenceString: string;
   episodeStartDate: string;
   lastSeen: string;
-  batteryLevel: number;
+  batteryLevel: string;
   deviceStatus: string;
 };
 
@@ -43,7 +43,7 @@ export interface DeviceDetails {
   alarmDays?: string;
   alarmTime?: string;
   refillAlarm?: string;
-  batteryLevel: number;
+  batteryLevel: string;
   lastOpened: string;
   lastHeartBeat: string;
   deviceStatus: string;
