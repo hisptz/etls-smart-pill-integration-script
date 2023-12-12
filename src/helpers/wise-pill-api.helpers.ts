@@ -198,7 +198,7 @@ export function sanitizeDatesIntoDateTime(date: string): string {
 
 export function generateDataValuesFromAdherenceMapping(
   { adherence, date }: AdherenceMapping,
-  batteryLevel?: number,
+  batteryLevel?: string,
   deviceStatus?: string
 ): Array<DHIS2DataValue> {
   const dataValues: Array<DHIS2DataValue> = [
