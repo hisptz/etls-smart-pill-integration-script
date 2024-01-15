@@ -67,6 +67,10 @@ export function getDeviceStatus(status: string): string {
     : "";
 }
 
+export function getDeviceBatteryLevel(batteryLevel: string): string {
+  return `${batteryLevel} mV`;
+}
+
 export function sanitizeAdherenceCode(code: string): string {
   return code === "0"
     ? NONE_RECEIVED
@@ -115,7 +119,7 @@ export function sanitizeDeviceList(
       return {
         imei: imei ?? "",
         lastHeartBeat: lastHeartBeat ?? "",
-        batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
+        batteryLevel: getDeviceBatteryLevel(batteryLevel),
         lastOpened: lastOpened ?? "",
         daysDeviceInUse: daysDeviceInUse ?? 0,
         deviceStatus: getDeviceStatus(deviceStatus),
@@ -175,7 +179,7 @@ export async function getDevicesWisepillEpisodes(
           episodeStartDate,
           lastSeen,
           deviceStatus: getDeviceStatus(deviceStatus),
-          batteryLevel: parseInt(`${batteryLevel ?? 0}`) / 100,
+          batteryLevel: getDeviceBatteryLevel(batteryLevel),
         };
         sanitizedEpisodes.push(episode);
       }
@@ -194,7 +198,7 @@ export function sanitizeDatesIntoDateTime(date: string): string {
 
 export function generateDataValuesFromAdherenceMapping(
   { adherence, date }: AdherenceMapping,
-  batteryLevel?: number,
+  batteryLevel?: string,
   deviceStatus?: string
 ): Array<DHIS2DataValue> {
   const dataValues: Array<DHIS2DataValue> = [

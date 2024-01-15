@@ -48,38 +48,58 @@ export async function startIntegrationProcess({
         ` at ${DateTime.now().toISO()}`
     );
 
-    const { program, programStage, attributes } = await getProgramMapping();
-    if (!program || !programStage || !attributes) {
-      logger.warn(`There are program metadata configured for migration`);
+    logger.info("Fetching DAT devices assigned in DHIS2.");
+    const assignedDevices = await getAssignedDevices();
+
+    logger.info("Fetching configured program mapping from DHIS2.");
+    const programMapping = await getProgramMapping();
+
+    if (!programMapping || programMapping.length <= 0) {
+      logger.warn(`There are No program metadata configured for migration`);
       logger.error("Terminating the integration script!");
       return;
     }
 
-    logger.info("Fetching DAT devices assigned in DHIS2.");
-    const assignedDevices = await getAssignedDevices();
+    for (const { program, programStage, attributes } of programMapping) {
+      if (!program || !programStage || !attributes) {
+        logger.warn(
+          `There are program mapping is wrongly configured! Revisit configurations to ensure program, program and attributes are well configured`
+        );
+        break;
+      }
 
-    const trackedEntityInstances =
-      await getDhis2TrackedEntityInstancesWithEvents(
-        { program, programStage, attributes },
-        assignedDevices,
-        { startDate, endDate }
+      const trackedEntityInstances =
+        await getDhis2TrackedEntityInstancesWithEvents(
+          { program, programStage, attributes },
+          assignedDevices,
+          { startDate, endDate }
+        );
+
+      logger.info("Fetching Adherence episodes from Wisepill.");
+      const episodes = await getDevicesWisepillEpisodes(assignedDevices);
+
+      const eventPayloads = generateEventPayload(
+        episodes,
+        trackedEntityInstances,
+        program,
+        programStage,
+        {
+          startDate,
+          endDate,
+        }
       );
 
-    logger.info("Fetching Adherence episodes from Wisepill.");
-    const episodes = await getDevicesWisepillEpisodes(assignedDevices);
-
-    const eventPayloads = generateEventPayload(
-      episodes,
-      trackedEntityInstances,
-      program,
-      programStage,
-      {
-        startDate,
-        endDate,
+      if (eventPayloads.length) {
+        logger.info(
+          `Uploading ${eventPayloads.length} events for program stage ${programStage}`
+        );
+        await uploadDhis2Events(eventPayloads);
+      } else {
+        logger.info(
+          `Skipping uploading events from program stage ${programStage} since there are no events`
+        );
       }
-    );
-
-    await uploadDhis2Events(eventPayloads);
+    }
   } catch (error: any) {}
 
   logger.info(
@@ -108,7 +128,6 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   assignedDevices: string[],
   duration: Duration
 ): Promise<{ [key: string]: string }[]> {
-  logger.info("Fetching DHIS2 program mappings.");
   const { program, programStage, attributes } = programMapping;
 
   let trackedEntityInstances = await getDhis2TrackedEntityInstancesByAttribute(
@@ -120,7 +139,7 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   const { startDate, endDate } = duration;
   const events = await getDhis2Events(programStage, { startDate, endDate });
 
-  logger.info("Organizing DHIS2 tracked entities and events");
+  logger.info(`Organizing DHIS2 tracked entities and events`);
   trackedEntityInstances = map(
     trackedEntityInstances,
     ({ trackedEntityInstance, imei, orgUnit }) => {
@@ -365,11 +384,7 @@ function getLatestEpisode(episodes: Episode[]): Episode {
 
 async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
   const paginationSize = 100;
-  logger.info(
-    `Saving ${
-      eventPayloads.length
-    } adherence events into DHIS2 by pagination of ${[paginationSize]}`
-  );
+  logger.info(`Evaluating pagination by ${[paginationSize]} page size`);
   const chunkedEvents = chunk(eventPayloads, paginationSize);
   let page = 1;
 
