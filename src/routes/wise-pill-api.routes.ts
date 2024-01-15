@@ -18,6 +18,7 @@ import {
   binaryToDecimal,
   closePreviousLinkedEpisodes,
   decimalToBinary,
+  getDeviceBatteryLevel,
   getDeviceStatus,
   sanitizeDeviceList,
 } from "../helpers/wise-pill-api.helpers";
@@ -331,7 +332,7 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
         alarmDays: alarm_days ? decimalToBinary(alarm_days) : "",
         alarmTime: alarm_time ?? "",
         refillAlarm: refill_alarm_datetime ?? "",
-        batteryLevel: parseInt(`${last_battery_level}`) / 100,
+        batteryLevel: getDeviceBatteryLevel(last_battery_level),
         lastOpened: last_opened ?? "",
         lastHeartBeat: last_seen ?? "",
         deviceStatus: getDeviceStatus(device_status),
