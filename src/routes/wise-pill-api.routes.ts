@@ -102,13 +102,16 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
     });
   }
 
-  const { alarm, refillAlarm, imei, days } = req.body;
+  const { alarm, alarmStatus, refillAlarmStatus, refillAlarm, imei, days } =
+    req.body;
 
   // If there is alarm to be set
   if (alarm) {
     const alarmDays = days ? binaryToDecimal(days) : 127;
     const { data } = await wisePillClient.put(
-      `devices/setAlarm?alarm=1&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
+      `devices/setAlarm?alarm=${
+        alarmStatus ?? 1
+      }&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
     );
     const { ResultCode: alarmCode, Result: alarmResult } = data;
     if (alarmCode >= 100) {
@@ -122,7 +125,9 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
   // If there is refill alarm to be set
   if (refillAlarm) {
     const { data } = await wisePillClient.put(
-      `devices/setRefillAlarm?refill_alarm=1&refill_alarm_datetime=${refillAlarm}&device_imei=${imei}`
+      `devices/setRefillAlarm?refill_alarm=${
+        refillAlarmStatus ?? 1
+      }&refill_alarm_datetime=${refillAlarm}&device_imei=${imei}`
     );
     const { ResultCode: refillAlarmCode, Result: refillAlarmResult } = data;
     if (refillAlarmCode >= 100) {
