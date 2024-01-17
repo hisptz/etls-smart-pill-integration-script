@@ -84,23 +84,23 @@ export function sanitizeAdherenceCode(code: string): string {
 }
 
 export function getSanitizedAdherence(
-  adherences: string[],
+  adherenceStrings: string[],
   end: string
 ): AdherenceMapping[] {
-  const episodeAdherences: AdherenceMapping[] = [];
+  const episodeAdherence: AdherenceMapping[] = [];
   const endDate = DateTime.fromSQL(end);
 
   let daysToRollback = 0;
-  for (const adherence of adherences.reverse()) {
+  for (const adherence of adherenceStrings.reverse()) {
     const date = endDate.minus({ days: daysToRollback }).toISO()!;
-    episodeAdherences.push({
+    episodeAdherence.push({
       date,
       adherence,
     });
     daysToRollback++;
   }
 
-  return episodeAdherences;
+  return episodeAdherence;
 }
 
 export function sanitizeDeviceList(
@@ -135,17 +135,17 @@ export async function getDevicesWisepillEpisodes(
   const deviceFetchUrl = `devices/getDeviceDetail`;
   const sanitizedEpisodes: Episode[] = [];
   const imeiGroupCount = 100;
-  const chunckedImeis = chunk(deviceImeis, imeiGroupCount);
+  const chuckedImeis = chunk(deviceImeis, imeiGroupCount);
 
   let fetchCount = 0;
-  for (const imeis of chunckedImeis) {
+  for (const imeis of chuckedImeis) {
     fetchCount++;
     const { data } = await wisePillClient.get(episodeUrl, {
       data: { imeis },
     });
     const { records: episodes, ResultCode: episodeCode } = data;
 
-    const assginedDevicesObject = {
+    const assignedDevicesObject = {
       data: {
         imeis,
       },
@@ -153,7 +153,7 @@ export async function getDevicesWisepillEpisodes(
     const { status, data: devicesResults } = await wisePillClient.get(
       deviceFetchUrl,
       {
-        data: assginedDevicesObject,
+        data: assignedDevicesObject,
       }
     );
 
@@ -185,7 +185,7 @@ export async function getDevicesWisepillEpisodes(
       }
     }
     logger.info(
-      `Fetched wisepill episodes: ${fetchCount}/${chunckedImeis.length}`
+      `Fetched wisepill episodes: ${fetchCount}/${chuckedImeis.length}`
     );
   }
 
