@@ -42,6 +42,8 @@ export type DHIS2DataValue = {
 export interface DeviceDetails {
   alarmDays?: string;
   alarmTime?: string;
+  alarmStatus?: number;
+  refillAlarmStatus?: number;
   refillAlarm?: string;
   batteryLevel: string;
   lastOpened: string;

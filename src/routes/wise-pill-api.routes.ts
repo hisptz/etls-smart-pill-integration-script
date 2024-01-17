@@ -325,7 +325,9 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
       res.status(409).send({ message: Result, code: ResultCode });
     } else {
       const {
+        alarm,
         alarm_time,
+        refill_alarm,
         refill_alarm_datetime,
         last_battery_level,
         last_opened,
@@ -336,7 +338,9 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
       const deviceObject: DeviceDetails = {
         alarmDays: alarm_days ? decimalToBinary(alarm_days) : "",
         alarmTime: alarm_time ?? "",
+        alarmStatus: alarm ?? 0,
         refillAlarm: refill_alarm_datetime ?? "",
+        refillAlarmStatus: refill_alarm ?? 0,
         batteryLevel: getDeviceBatteryLevel(last_battery_level),
         lastOpened: last_opened ?? "",
         lastHeartBeat: last_seen ?? "",
