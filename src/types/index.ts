@@ -4,6 +4,7 @@ export type Duration = {
 };
 
 export type Episode = {
+  id: string;
   imei: string;
   adherenceString: string;
   episodeStartDate: string;

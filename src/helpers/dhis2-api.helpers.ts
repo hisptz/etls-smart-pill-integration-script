@@ -196,6 +196,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
               imei,
               trackedEntityInstance,
               orgUnit,
+              attributes,
             });
           }
         );

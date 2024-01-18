@@ -16,6 +16,8 @@ import {
   groupBy,
   orderBy,
   last,
+  keys,
+  values,
 } from "lodash";
 
 import logger from "../logging";
@@ -28,7 +30,7 @@ import {
 } from "../helpers/dhis2-api.helpers";
 import {
   generateDataValuesFromAdherenceMapping,
-  getDevicesWisepillEpisodes,
+  getWisepillEpisodeValues,
   getSanitizedAdherence,
   sanitizeDatesIntoDateTime,
 } from "../helpers/wise-pill-api.helpers";
@@ -75,14 +77,24 @@ export async function startIntegrationProcess({
           { startDate, endDate }
         );
 
+      logger.info("Mapping Tracked Entity Instances with episodes");
+      const trackedEntityInstancesWithEpisodesMapping =
+        getTrackedEntityInstanceWithEpisodesMapping(
+          trackedEntityInstances,
+          attributes["episodeId"]
+        );
+
       logger.info("Fetching Adherence episodes from Wisepill.");
-      const episodes = await getDevicesWisepillEpisodes(assignedDevices);
+      const episodes = await getWisepillEpisodeValues(
+        values(trackedEntityInstancesWithEpisodesMapping)
+      );
 
       const eventPayloads = generateEventPayload(
         episodes,
         trackedEntityInstances,
         program,
         programStage,
+        trackedEntityInstancesWithEpisodesMapping,
         {
           startDate,
           endDate,
@@ -107,6 +119,25 @@ export async function startIntegrationProcess({
   );
 }
 
+function getTrackedEntityInstanceWithEpisodesMapping(
+  trackedEntityInstances: Record<string, any>,
+  episodeIdAttribute: string
+) {
+  let mappedTrackedEntityInstances: Record<string, any> = {};
+  forEach(trackedEntityInstances, (tei) => {
+    const { attributes, trackedEntityInstance } = tei;
+    const { value: episodeId } = find(
+      attributes,
+      ({ attribute }) => attribute === episodeIdAttribute
+    );
+    if (episodeId) {
+      mappedTrackedEntityInstances[trackedEntityInstance] = episodeId;
+    }
+  });
+
+  return mappedTrackedEntityInstances;
+}
+
 function getEventDuration(startDate?: string, endDate?: string): string {
   if (!startDate && !endDate) {
     return "24h";
@@ -127,7 +158,7 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   programMapping: any,
   assignedDevices: string[],
   duration: Duration
-): Promise<{ [key: string]: string }[]> {
+): Promise<Record<string, any>[]> {
   const { program, programStage, attributes } = programMapping;
 
   let trackedEntityInstances = await getDhis2TrackedEntityInstancesByAttribute(
@@ -142,13 +173,15 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   logger.info(`Organizing DHIS2 tracked entities and events`);
   trackedEntityInstances = map(
     trackedEntityInstances,
-    ({ trackedEntityInstance, imei, orgUnit }) => {
+    ({ trackedEntityInstance, imei, orgUnit, attributes: teiAttributes }) => {
       const teiEvents = filter(
         events,
         ({ trackedEntityInstance: tei }) => trackedEntityInstance === tei
       );
+
       return {
         trackedEntityInstance,
+        attributes: teiAttributes,
         imei,
         orgUnit,
         events: teiEvents,
@@ -218,6 +251,7 @@ function generateEventPayload(
   trackedEntityInstances: Array<{ [key: string]: any }>,
   program: string,
   programStage: string,
+  trackedEntityInstancesWithEpisodesMapping: Record<string, any>,
   duration: Duration
 ): any[] {
   logger.info("Preparing the events payloads for migrating to DHIS2");
@@ -225,7 +259,6 @@ function generateEventPayload(
   const eventPayloads: DHIS2Event[] = [];
   const { startDate, endDate } = duration;
   const defaultStartDate = "1970-01-01";
-  const groupedEpisodes = groupBy(episodes, "imei");
 
   for (const {
     imei,
@@ -233,23 +266,32 @@ function generateEventPayload(
     orgUnit,
     events,
   } of trackedEntityInstances) {
-    const teiEpisodes = groupedEpisodes[imei];
+    const teiEpisodeId =
+      trackedEntityInstancesWithEpisodesMapping[trackedEntityInstance];
+
+    if (!teiEpisodeId) {
+      logger.warn(
+        `Tracked entity instance ${trackedEntityInstance} has no episode id`
+      );
+      continue;
+    }
+
+    const teiEpisode = find(
+      episodes,
+      ({ id: episodeId }) => episodeId === teiEpisodeId
+    );
 
     logger.info(
       `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntityInstance} assigned to device ${imei}`
     );
-    if (teiEpisodes && teiEpisodes.length) {
-      const cumulativeEpisodes = getLatestEpisode(teiEpisodes);
+    if (teiEpisode) {
       const { adherenceString, lastSeen, batteryLevel, deviceStatus, imei } =
-        cumulativeEpisodes;
-
+        teiEpisode;
       const adherence = (adherenceString ?? "").split(",");
-
       // if not range is specified
       if (!startDate && !endDate) {
         const lastSeenDate = DateTime.fromSQL(lastSeen);
         const now = DateTime.now();
-
         // if the last seen for the episode is the current day
         if ((now.diff(lastSeenDate, ["days"]).toObject().days ?? 0) < 1) {
           const episodeAdherence: AdherenceMapping = {
