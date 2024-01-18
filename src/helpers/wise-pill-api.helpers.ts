@@ -17,6 +17,9 @@ import {
 import logger from "../logging";
 import wisePillClient from "../clients/wise-pill";
 import { DateTime } from "luxon";
+import { getSystemTimeZone } from "./system.helpers";
+import { updateDATEnrollmentStatus } from "./dhis2-api.helpers";
+import { Response } from "express";
 
 export function binaryToDecimal(binaryString: string): number {
   const binaryArray = binaryString.split("").reverse();
@@ -128,6 +131,100 @@ export function sanitizeDeviceList(
   );
 }
 
+export function sanitizeDatesIntoDateTime(date: string): string {
+  return date.replace(/ /g, "T");
+}
+
+export function generateDataValuesFromAdherenceMapping(
+  { adherence, date }: AdherenceMapping,
+  batteryLevel?: string,
+  deviceStatus?: string
+): Array<DHIS2DataValue> {
+  const dataValues: Array<DHIS2DataValue> = [
+    {
+      dataElement: DOSAGE_TIME_DATA_ELEMENT,
+      value: sanitizeDatesIntoDateTime(date),
+    },
+    {
+      dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
+      value: sanitizeAdherenceCode(adherence),
+    },
+  ];
+
+  if (batteryLevel) {
+    dataValues.push({
+      dataElement: BATTERY_HEALTH_DATA_ELEMENT,
+      value: batteryLevel,
+    });
+  }
+
+  if (deviceStatus) {
+    dataValues.push({
+      dataElement: DEVICE_HEALTH_DATA_ELEMENT,
+      value: deviceStatus,
+    });
+  }
+
+  return dataValues;
+}
+
+export async function assignEpisodeToDevice(
+  episodeId: string,
+  deviceImei: string,
+  patientId: string,
+  response: Response
+): Promise<void> {
+  // Assigning episode to device
+  const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${deviceImei}`;
+  const { data } = await wisePillClient.put(assignDeviceUrl);
+  const {
+    ResultCode: deviceAssignmentCode,
+    Result: deviceAssignmentResult,
+  }: any = data;
+  if (deviceAssignmentCode == 0) {
+    // creating an enrollment signal in DHIS2
+    await updateDATEnrollmentStatus(patientId);
+
+    // updating the device timezone
+    const timeZone = getSystemTimeZone();
+    const setTimeZoneUrl = `devices/setTimezone?device_imei=${deviceImei}&timezone=${timeZone}`;
+    await wisePillClient.put(setTimeZoneUrl);
+
+    response.status(201).send({
+      status: 201,
+      episode: episodeId,
+      message: `Device ${deviceImei} assigned to ${patientId} at timezone ${timeZone}`,
+    });
+  } else {
+    response.status(409).send({ message: deviceAssignmentResult });
+  }
+}
+
+export async function closePreviousLinkedEpisodes(
+  deviceImei: string
+): Promise<void> {
+  const activeEpisodeStatus = 1;
+  const getEpisodesUrl = `episodes/getEpisodes?episode_status=${activeEpisodeStatus}&device_imei=${deviceImei}`;
+
+  const { data, status } = await wisePillClient.get(getEpisodesUrl);
+  if (status === 200) {
+    const { ResultCode: episodeRequestStatus, records: episodeRecords }: any =
+      data;
+
+    if (parseInt(`${episodeRequestStatus}`) === 0) {
+      const episode = head(episodeRecords) as any;
+      const { episode_id } = episode;
+      if (episode_id) {
+        const now = DateTime.now().toFormat("yyyy-MM-dd");
+        const unassignEpisodeUrl = `episodes/closeEpisode?episode_id=${episode_id}&episode_end_date=${now}`;
+        await wisePillClient.put(unassignEpisodeUrl);
+      }
+    } else {
+      return;
+    }
+  }
+}
+
 export async function getDevicesWisepillEpisodes(
   deviceImeis: string[]
 ): Promise<Episode[]> {
@@ -192,64 +289,11 @@ export async function getDevicesWisepillEpisodes(
   return sanitizedEpisodes;
 }
 
-export function sanitizeDatesIntoDateTime(date: string): string {
-  return date.replace(/ /g, "T");
-}
-
-export function generateDataValuesFromAdherenceMapping(
-  { adherence, date }: AdherenceMapping,
-  batteryLevel?: string,
-  deviceStatus?: string
-): Array<DHIS2DataValue> {
-  const dataValues: Array<DHIS2DataValue> = [
-    {
-      dataElement: DOSAGE_TIME_DATA_ELEMENT,
-      value: sanitizeDatesIntoDateTime(date),
-    },
-    {
-      dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
-      value: sanitizeAdherenceCode(adherence),
-    },
-  ];
-
-  if (batteryLevel) {
-    dataValues.push({
-      dataElement: BATTERY_HEALTH_DATA_ELEMENT,
-      value: batteryLevel,
-    });
-  }
-
-  if (deviceStatus) {
-    dataValues.push({
-      dataElement: DEVICE_HEALTH_DATA_ELEMENT,
-      value: deviceStatus,
-    });
-  }
-
-  return dataValues;
-}
-
-export async function closePreviousLinkedEpisodes(
-  deviceImei: string
-): Promise<void> {
-  const activeEpisodeStatus = 1;
-  const getEpisodesUrl = `episodes/getEpisodes?episode_status=${activeEpisodeStatus}&device_imei=${deviceImei}`;
-
-  const { data, status } = await wisePillClient.get(getEpisodesUrl);
-  if (status === 200) {
-    const { ResultCode: episodeRequestStatus, records: episodeRecords }: any =
-      data;
-
-    if (parseInt(`${episodeRequestStatus}`) === 0) {
-      const episode = head(episodeRecords) as any;
-      const { episode_id } = episode;
-      if (episode_id) {
-        const now = DateTime.now().toFormat("yyyy-MM-dd");
-        const unassignEpisodeUrl = `episodes/closeEpisode?episode_id=${episode_id}&episode_end_date=${now}`;
-        await wisePillClient.put(unassignEpisodeUrl);
-      }
-    } else {
-      return;
-    }
-  }
+export async function getDeviceDetailsFromWisepillAPI(
+  imei: string
+): Promise<{ data: any; status: any }> {
+  const { status, data } = await wisePillClient.get(
+    `devices/getDevices.php?device_imei=${imei}`
+  );
+  return { data, status };
 }
