@@ -65,9 +65,15 @@ wisePillRouter.get("/", (req: Request, res: Response) => {
  *               alarm:
  *                 type: string
  *                 description: Alarm to be set for taking medications in the format of hh:mm
+ *               alarmStatus:
+ *                 type: number
+ *                 description: Status of the set alarm, can be 1 for activating the alarm or 0 for deactivating the alarm
  *               refillAlarm:
  *                 type: string
  *                 description:  Alarm to be set for refilling the device with medications in the format of YYYY-MM-DD hh:mm:ss
+ *               refillAlarmStatus:
+ *                 type: string
+ *                 description: Status of the set refill alarm, can be 1 for activating the alarm or 0 for deactivating the alarm
  *               days:
  *                 type: string
  *                 description: This is binary representation of days of the week, SMTWTFS in a string format. e.g. 1111111
@@ -89,6 +95,12 @@ wisePillRouter.get("/", (req: Request, res: Response) => {
  *         description: Failed to set alarm
  */
 wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
+  // validate the Alarm status value
+  const validateAlarmStatusValue = (alarmStatus: any) => {
+    const sanitizedAlarmStatus = parseInt(`${alarmStatus}`);
+    return sanitizedAlarmStatus === 0 || sanitizedAlarmStatus === 1;
+  };
+
   // validate the body
   const { error: bodyValidationError } = addAlarmSchema.validate(req.body);
   if (bodyValidationError) {
@@ -101,12 +113,15 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
     req.body;
 
   // If there is alarm to be set
-  if (alarm) {
+  if (alarm || validateAlarmStatusValue(alarmStatus)) {
     const alarmDays = days ? binaryToDecimal(days) : 127;
+    const alarmString = alarm
+      ? `&alarm_time=${alarm}&alarm_days=${alarmDays}`
+      : "";
     const { data } = await wisePillClient.put(
       `devices/setAlarm?alarm=${
         alarmStatus ?? 1
-      }&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
+      }&device_imei=${imei}${alarmString}`
     );
     const { ResultCode: alarmCode, Result: alarmResult } = data;
     if (alarmCode >= 100) {
@@ -118,11 +133,14 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
   }
 
   // If there is refill alarm to be set
-  if (refillAlarm) {
+  if (refillAlarm || validateAlarmStatusValue(refillAlarmStatus)) {
+    const alarmString = refillAlarm
+      ? `&refill_alarm_datetime=${refillAlarm}`
+      : "";
     const { data } = await wisePillClient.put(
       `devices/setRefillAlarm?refill_alarm=${
         refillAlarmStatus ?? 1
-      }&refill_alarm_datetime=${refillAlarm}&device_imei=${imei}`
+      }&device_imei=${imei}${alarmString}`
     );
     const { ResultCode: refillAlarmCode, Result: refillAlarmResult } = data;
     if (refillAlarmCode >= 100) {
@@ -256,12 +274,12 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
   }
 });
 
-// For fetching device list
+// For fetching device details
 /**
  * @swagger
  * /api/devices/details:
  *   get:
- *     description: Get a list of users based on query parameters
+ *     description: Get all the details of a device
  *     parameters:
  *       - name: imei
  *         description: Specifies the device IMEI number
