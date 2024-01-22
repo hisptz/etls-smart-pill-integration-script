@@ -71,7 +71,7 @@ export function getDeviceStatus(status: string): string {
 }
 
 export function getDeviceBatteryLevel(batteryLevel: string): string {
-  return `${batteryLevel} mV`;
+  return `${batteryLevel}`;
 }
 
 export function sanitizeAdherenceCode(code: string): string {
