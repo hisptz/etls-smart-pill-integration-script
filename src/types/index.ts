@@ -4,6 +4,7 @@ export type Duration = {
 };
 
 export type Episode = {
+  id: string;
   imei: string;
   adherenceString: string;
   episodeStartDate: string;
@@ -42,6 +43,8 @@ export type DHIS2DataValue = {
 export interface DeviceDetails {
   alarmDays?: string;
   alarmTime?: string;
+  alarmStatus?: number;
+  refillAlarmStatus?: number;
   refillAlarm?: string;
   batteryLevel: string;
   lastOpened: string;
