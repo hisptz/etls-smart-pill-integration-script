@@ -299,5 +299,10 @@ export async function getDeviceDetailsFromWisepillAPI(
   const { status, data } = await wisePillClient.get(
     `devices/getDevices.php?device_imei=${imei}`
   );
+  if (data && data.ResultCode == 0) {
+    const { records } = data;
+    const [device] = records;
+    return { data: device, status };
+  }
   return { data, status };
 }

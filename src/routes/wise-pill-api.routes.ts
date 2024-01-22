@@ -449,7 +449,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     data;
 
   if (devicesRequestStatus == 0) {
-    const { device_status: deviceStatus } = first(deviceRecords as any[]);
+    const { device_status } = first(deviceRecords as any[]);
+    const deviceStatus = parseInt(device_status);
     if (deviceStatus == assignedDeviceStatus) {
       const { data } = await getDeviceDetailsFromWisepillAPI(imei);
       const { episode_id: episodeId } = data;
@@ -470,7 +471,6 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
         Result: message,
         episode_id: episodeId,
       }: any = data;
-
       if (createEpisodeResultCode == 0 && episodeId) {
         await assignEpisodeToDevice(episodeId, imei, patientId, res);
       } else {
