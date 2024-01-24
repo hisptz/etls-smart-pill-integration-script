@@ -172,6 +172,10 @@ export async function assignEpisodeToDevice(
   episodeId: string,
   deviceImei: string,
   patientId: string,
+  trackedEntityInstance: string,
+  program: string,
+  programStage: string,
+  orgUnit: string,
   response: Response
 ): Promise<void> {
   // Assigning episode to device
@@ -183,7 +187,13 @@ export async function assignEpisodeToDevice(
   }: any = data;
   if (deviceAssignmentCode == 0) {
     // creating an enrollment signal in DHIS2
-    await updateDATEnrollmentStatus(patientId);
+    await updateDATEnrollmentStatus(
+      patientId,
+      trackedEntityInstance,
+      program,
+      programStage,
+      orgUnit
+    );
 
     // updating the device timezone
     const timeZone = getSystemTimeZone();
