@@ -6,19 +6,7 @@ import {
   Episode,
 } from "../types";
 import { DateTime } from "luxon";
-import {
-  map,
-  head,
-  chunk,
-  find,
-  forEach,
-  filter,
-  groupBy,
-  orderBy,
-  last,
-  keys,
-  values,
-} from "lodash";
+import { map, head, chunk, find, forEach, filter, last, values } from "lodash";
 
 import logger from "../logging";
 import {

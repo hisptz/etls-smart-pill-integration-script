@@ -9,7 +9,6 @@ import {
 import dhis2Client from "../clients/dhis2";
 import logger from "../logging";
 import { DateTime } from "luxon";
-import { DHIS2Event } from "../types";
 import { uid } from "@hisptz/dhis2-utils";
 
 async function getDataStoreSettings(): Promise<any> {
@@ -91,16 +90,13 @@ export function logSanitizedConflictsImportSummary(errorResponse: any): void {
   }
 }
 
-export async function updateDATEnrollmentStatus(
-  patientNumber: string
-): Promise<void> {
+export async function getPatientDetailsFromDHIS2(
+  patientId: string
+): Promise<any | null> {
   try {
-    const now = DateTime.now().toISO();
-    const eventDate = DateTime.now().toFormat("yyyy-MM-dd");
     const programMappings = await getProgramMapping();
-
-    if (programMappings && programMappings.length) {
-      const events = flattenDeep(
+    const trackedEntityInstance = head(
+      flattenDeep(
         await mapLimit(
           programMappings,
           5,
@@ -109,58 +105,104 @@ export async function updateDATEnrollmentStatus(
               program,
               programStage,
               attributes: mappedAttributes,
-            }: any): Promise<DHIS2Event[]> => {
+            }: any): Promise<any> => {
               const patientNumberAttribute = mappedAttributes["patientNumber"];
-              const tei = await getDhis2TrackedEntityInstancesByAttribute(
-                program,
-                [patientNumber],
-                patientNumberAttribute
+              const episodeIdAttribute = mappedAttributes["episodeId"];
+
+              const tei = head(
+                await getDhis2TrackedEntityInstancesByAttribute(
+                  program,
+                  [patientId],
+                  patientNumberAttribute
+                )
               );
 
-              return tei.map(({ trackedEntityInstance, orgUnit }) => ({
-                event: uid(),
+              if (!tei) {
+                return null;
+              }
+
+              const { attributes, trackedEntityInstance, orgUnit } = tei;
+              const episodeId = find(
+                attributes,
+                ({ attribute }) => attribute === episodeIdAttribute
+              )?.value;
+
+              return {
                 program,
                 programStage,
-                orgUnit,
                 trackedEntityInstance,
-                eventDate,
-                status: "ACTIVE",
-                dataValues: [
-                  {
-                    dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
-                    value: ENROLLMENT_SIGNAL,
-                  },
-                  {
-                    dataElement: DOSAGE_TIME_DATA_ELEMENT,
-                    value: now ?? "",
-                  },
-                ],
-              }));
+                orgUnit,
+                patientId,
+                episodeId,
+              };
             }
           )
         )
-      );
-      const url = `events?strategy=CREATE_AND_UPDATE`;
-      const { status, data } = await dhis2Client.post(url, {
-        events,
-      });
+      )
+    ) as any | null;
 
-      if (status === 200) {
-        logger.info(`Successfully updated the DAT enrollment status`);
-        const { response: importResponse } = data;
-        logImportSummary(importResponse);
-      } else {
-        logger.warn(
-          `There are errors in saving the DAT enrollment status for patient with ${patientNumber} identification number`
-        );
-        const { response: importResponse } = data;
-        logImportSummary(importResponse);
-      }
+    return trackedEntityInstance;
+  } catch (error: any) {
+    logger.warn(
+      `Failed to fetch patient details with ${patientId} identification number`
+    );
+    logger.error(error.toString());
+    return null;
+  }
+}
+
+export async function updateDATEnrollmentStatus(
+  patientNumber: string,
+  trackedEntityInstance: string,
+  program: string,
+  programStage: string,
+  orgUnit: string
+): Promise<void> {
+  try {
+    const now = DateTime.now().toISO();
+    const eventDate = DateTime.now().toFormat("yyyy-MM-dd");
+
+    const event = {
+      event: uid(),
+      program,
+      programStage,
+      orgUnit,
+      trackedEntityInstance,
+      eventDate,
+      status: "ACTIVE",
+      dataValues: [
+        {
+          dataElement: DEVICE_SIGNAL_DATA_ELEMENT,
+          value: ENROLLMENT_SIGNAL,
+        },
+        {
+          dataElement: DOSAGE_TIME_DATA_ELEMENT,
+          value: now ?? "",
+        },
+      ],
+    };
+
+    const url = `events?strategy=CREATE_AND_UPDATE`;
+    const { status, data } = await dhis2Client.post(url, {
+      events: [event],
+    });
+
+    if (status === 200) {
+      logger.info(`Successfully updated the DAT enrollment status`);
+      const { response: importResponse } = data;
+      logImportSummary(importResponse);
+    } else {
+      logger.warn(
+        `There are errors in saving the DAT enrollment status for patient with ${patientNumber} identification number`
+      );
+      const { response: importResponse } = data;
+      logImportSummary(importResponse);
     }
-  } catch (error) {
+  } catch (error: any) {
     logger.warn(
       `Failed to assign the DAT enrollment status for patient with ${patientNumber} identification number`
     );
+    logger.error(error.toString());
   }
 }
 
