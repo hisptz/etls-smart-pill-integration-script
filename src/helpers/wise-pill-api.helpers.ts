@@ -311,3 +311,30 @@ export async function getDeviceDetailsFromWisepillAPI(
   }
   return { data, status };
 }
+
+export async function createDeviceWisepillEpisodes(
+  patientId: string,
+  imei: string,
+  res: Response
+): Promise<string | null> {
+  // Creating episode if there are no episodes related to the patient
+  const date = DateTime.now().toFormat("yyyy-MM-dd");
+  const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
+  const { data } = await wisePillClient.post(createEpisodeUrl);
+  const {
+    ResultCode: createEpisodeResultCode,
+    Result: message,
+    episode_id: createdEpisodeId,
+  }: any = data;
+
+  if (createEpisodeResultCode !== 0) {
+    res.status(409).send({
+      message:
+        createEpisodeResultCode == 1
+          ? `Episode already exist for ${imei}`
+          : message ?? `Failed to create Episode for ${imei}`,
+    });
+  }
+
+  return createdEpisodeId ?? null;
+}
