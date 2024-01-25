@@ -210,27 +210,22 @@ export async function assignEpisodeToDevice(
   }
 }
 
-export async function closePreviousLinkedEpisodes(
-  deviceImei: string
+export async function unassignPreviousLinkedEpisodes(
+  deviceImei: string,
+  response: Response
 ): Promise<void> {
-  const activeEpisodeStatus = 1;
-  const getEpisodesUrl = `episodes/getEpisodes?episode_status=${activeEpisodeStatus}&device_imei=${deviceImei}`;
+  const deviceAvailableStatus = 2;
+  const getEpisodesUrl = `devices/unassignDevice?device_status=device_status=${deviceAvailableStatus}&device_imei=${deviceImei}`;
 
-  const { data, status } = await wisePillClient.get(getEpisodesUrl);
+  const { data, status } = await wisePillClient.put(getEpisodesUrl);
   if (status === 200) {
-    const { ResultCode: episodeRequestStatus, records: episodeRecords }: any =
-      data;
-
-    if (parseInt(`${episodeRequestStatus}`) === 0) {
-      const episode = head(episodeRecords) as any;
-      const { episode_id } = episode;
-      if (episode_id) {
-        const now = DateTime.now().toFormat("yyyy-MM-dd");
-        const unassignEpisodeUrl = `episodes/closeEpisode?episode_id=${episode_id}&episode_end_date=${now}`;
-        await wisePillClient.put(unassignEpisodeUrl);
-      }
-    } else {
+    const { ResultCode: statusCode, Result: message }: any = data;
+    if (statusCode == 0) {
       return;
+    } else {
+      response.send(409).send({
+        message: `Could not clear previous episodes linked to ${deviceImei}. ${message}`,
+      });
     }
   }
 }
