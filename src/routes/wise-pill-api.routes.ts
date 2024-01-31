@@ -31,6 +31,7 @@ import {
   getAssignedDevices,
   getPatientDetailsFromDHIS2,
 } from "../helpers/dhis2-api.helpers";
+import logger from "../logging";
 
 export const wisePillRouter = Router();
 
@@ -48,7 +49,7 @@ wisePillRouter.get("/", (req: Request, res: Response) => {
     message:
       "Welcome to the Wisepill and DHIS2 integration API. Go to {server}/docs for the documentation",
   };
-  res.status(200).send(response);
+  return res.status(200).json(response);
 });
 
 // For setting device alarm
@@ -273,9 +274,9 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
         ...sanitizeDeviceList(devicesMergedWithRecords),
       ];
     }
-    res.status(200).send({ devices: sanitizedDevices });
+    return res.status(200).json({ devices: sanitizedDevices });
   } else {
-    res.status(status).send(devicesResults);
+    return res.status(status).json(devicesResults);
   }
 });
 
@@ -342,9 +343,9 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
   const { imei } = req.query;
   const { status, data } = await getDeviceDetailsFromWisepillAPI(`${imei}`);
   if (status === 200) {
-    const { Result, ResultCode, records } = data;
+    const { Result, ResultCode } = data;
     if (parseInt(ResultCode) >= 100) {
-      res.status(409).send({ message: Result, code: ResultCode });
+      return res.status(409).json({ message: Result, code: ResultCode });
     } else {
       const {
         alarm,
@@ -356,7 +357,7 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
         alarm_days,
         last_seen,
         device_status,
-      } = head(records) as any;
+      } = data;
       const deviceObject: DeviceDetails = {
         alarmDays: alarm_days ? decimalToBinary(alarm_days) : "",
         alarmTime: alarm_time ?? "",
@@ -368,10 +369,10 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
         lastHeartBeat: last_seen ?? "",
         deviceStatus: getDeviceStatus(device_status),
       };
-      res.status(status).send(deviceObject);
+      return res.status(status).json(deviceObject);
     }
   } else {
-    res.status(status).send(data);
+    return res.status(status).json(data);
   }
 });
 
@@ -447,78 +448,106 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     });
   }
   const { imei, patientId } = req.body;
+  let episodeId: string | null = null;
 
-  // check if device exists
-  const findDeviceUrl = `devices/findDevice?input=${imei}`;
-  const { data } = await wisePillClient.get(findDeviceUrl);
-  const { ResultCode: devicesRequestStatus, records: deviceRecords }: any =
-    data;
+  try {
+    // check if device exists
+    const findDeviceUrl = `devices/findDevice?input=${imei}`;
+    const { data } = await wisePillClient.get(findDeviceUrl);
+    const { ResultCode: devicesRequestStatus, records: deviceRecords }: any =
+      data;
 
-  if (devicesRequestStatus == 0) {
-    const { device_status } = first(deviceRecords as any[]);
-    const deviceStatus = parseInt(device_status);
+    if (devicesRequestStatus == 0) {
+      const { device_status } = first(deviceRecords as any[]);
+      const deviceStatus = parseInt(device_status);
 
-    // get patient details from DHIS2
-    let { program, programStage, trackedEntityInstance, orgUnit, episodeId } =
-      await getPatientDetailsFromDHIS2(patientId);
+      // get patient details from DHIS2
+      const {
+        program,
+        programStage,
+        trackedEntityInstance,
+        orgUnit,
+        episodeId: fetchedEpisodeId,
+      } = await getPatientDetailsFromDHIS2(patientId);
+      episodeId = fetchedEpisodeId ?? null;
 
-    if (!trackedEntityInstance) {
-      return res
-        .status(404)
-        .send({ message: `Patient ${patientId} not found` });
-    }
-
-    // Assigning device to episode
-    if (deviceStatus === availableDeviceStatus) {
-      if (!episodeId) {
-        // Creating episode if there are no episodes related to the patient
-        episodeId = createDeviceWisepillEpisodes(patientId, imei, res);
+      if (!trackedEntityInstance) {
+        return res
+          .status(404)
+          .json({ message: `Patient ${patientId} not found` });
       }
-      if (episodeId) {
-        // Assigning episode to device
-        await assignEpisodeToDevice(
-          episodeId,
-          imei,
-          patientId,
-          trackedEntityInstance,
-          program,
-          programStage,
-          orgUnit,
-          res
-        );
-      }
-    } else if (deviceStatus == assignedDeviceStatus) {
-      await unassignPreviousLinkedEpisodes(imei, res);
-      if (!episodeId) {
-        // Creating episode if there are no episodes related to the patient
-        episodeId = createDeviceWisepillEpisodes(patientId, imei, res);
-      }
-      if (episodeId) {
-        await assignEpisodeToDevice(
-          episodeId,
-          imei,
-          patientId,
-          trackedEntityInstance,
-          program,
-          programStage,
-          orgUnit,
-          res
-        );
-      } else {
-        res.status(404).send({
-          message: `Episodes assigned to device ${imei} could not be found`,
+      // Assigning device to episode
+      if (deviceStatus === availableDeviceStatus) {
+        if (!episodeId) {
+          // Creating episode if there are no episodes related to the patient
+          episodeId = await createDeviceWisepillEpisodes(patientId);
+
+          if (!episodeId) {
+            return res.status(409).json({
+              message: `Could not generate episode for device ${imei}`,
+            });
+          }
+        }
+        if (episodeId) {
+          // Assigning episode to device
+          const { statusCode, body } = await assignEpisodeToDevice(
+            episodeId,
+            imei,
+            patientId,
+            trackedEntityInstance,
+            program,
+            programStage,
+            orgUnit
+          );
+
+          return res.status(statusCode).json(body);
+        }
+      } else if (deviceStatus == assignedDeviceStatus) {
+        await unassignPreviousLinkedEpisodes(imei);
+        if (!episodeId) {
+          // Creating episode if there are no episodes related to the patient
+          episodeId = await createDeviceWisepillEpisodes(patientId);
+          if (!episodeId) {
+            return res.status(409).json({
+              message: `Could not generate episode for device ${imei}`,
+            });
+          }
+        }
+        if (episodeId) {
+          const { statusCode, body } = await assignEpisodeToDevice(
+            episodeId,
+            imei,
+            patientId,
+            trackedEntityInstance,
+            program,
+            programStage,
+            orgUnit
+          );
+
+          return res.status(statusCode).json(body);
+        } else {
+          return res.status(404).json({
+            message: `Episodes assigned to device ${imei} could not be found`,
+          });
+        }
+      } else if (deviceStatus === damagedDeviceStatus) {
+        return res.status(409).json({
+          message: `Device ${imei} is marked as damaged. Contact your system administrator for follow up.`,
+        });
+      } else if (deviceStatus === unavailableDeviceStatus) {
+        return res.status(409).json({
+          message: `Device ${imei} is unavailable. Contact your system administrator for follow up.`,
         });
       }
-    } else if (deviceStatus === damagedDeviceStatus) {
-      res.status(409).send({
-        message: `Device ${imei} is marked as damaged. Contact your system administrator for follow up.`,
-      });
-    } else if (deviceStatus === unavailableDeviceStatus) {
-      res.status(409).send({
-        message: `Device ${imei} is unavailable. Contact your system administrator for follow up.`,
-      });
+    } else {
+      return res.status(404).json({ message: `Device ${imei} not found` });
     }
-  } else {
-    res.status(404).send({ message: `Device ${imei} not found` });
+
+    return;
+  } catch (error: any) {
+    logger.error(error.toString());
+    return res
+      .status(500)
+      .json({ message: "Internal server error", errorTrace: error.toString() });
   }
 });

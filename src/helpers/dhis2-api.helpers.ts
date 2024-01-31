@@ -1,4 +1,13 @@
-import { filter, map, find, head, chunk, forEach, flattenDeep } from "lodash";
+import {
+  filter,
+  map,
+  find,
+  head,
+  chunk,
+  forEach,
+  flattenDeep,
+  compact,
+} from "lodash";
 import { mapLimit, asyncify } from "async";
 import {
   DEVICE_SIGNAL_DATA_ELEMENT,
@@ -96,51 +105,53 @@ export async function getPatientDetailsFromDHIS2(
   try {
     const programMappings = await getProgramMapping();
     const trackedEntityInstance = head(
-      flattenDeep(
-        await mapLimit(
-          programMappings,
-          5,
-          asyncify(
-            async ({
-              program,
-              programStage,
-              attributes: mappedAttributes,
-            }: any): Promise<any> => {
-              const patientNumberAttribute = mappedAttributes["patientNumber"];
-              const episodeIdAttribute = mappedAttributes["episodeId"];
-
-              const tei = head(
-                await getDhis2TrackedEntityInstancesByAttribute(
-                  program,
-                  [patientId],
-                  patientNumberAttribute
-                )
-              );
-
-              if (!tei) {
-                return null;
-              }
-
-              const { attributes, trackedEntityInstance, orgUnit } = tei;
-              const episodeId = find(
-                attributes,
-                ({ attribute }) => attribute === episodeIdAttribute
-              )?.value;
-
-              return {
+      compact(
+        flattenDeep(
+          await mapLimit(
+            programMappings,
+            5,
+            asyncify(
+              async ({
                 program,
                 programStage,
-                trackedEntityInstance,
-                orgUnit,
-                patientId,
-                episodeId,
-              };
-            }
+                attributes: mappedAttributes,
+              }: any): Promise<any> => {
+                const patientNumberAttribute =
+                  mappedAttributes["patientNumber"];
+                const episodeIdAttribute = mappedAttributes["episodeId"];
+
+                const tei = head(
+                  await getDhis2TrackedEntityInstancesByAttribute(
+                    program,
+                    [patientId],
+                    patientNumberAttribute
+                  )
+                );
+
+                if (!tei) {
+                  return null;
+                }
+
+                const { attributes, trackedEntityInstance, orgUnit } = tei;
+                const episodeId = find(
+                  attributes,
+                  ({ attribute }) => attribute === episodeIdAttribute
+                )?.value;
+
+                return {
+                  program,
+                  programStage,
+                  trackedEntityInstance,
+                  orgUnit,
+                  patientId,
+                  episodeId,
+                };
+              }
+            )
           )
         )
       )
     ) as any | null;
-
     return trackedEntityInstance;
   } catch (error: any) {
     logger.warn(
@@ -188,9 +199,18 @@ export async function updateDATEnrollmentStatus(
     });
 
     if (status === 200) {
-      logger.info(`Successfully updated the DAT enrollment status`);
       const { response: importResponse } = data;
-      logImportSummary(importResponse);
+      const { imported } = importResponse;
+      if (imported) {
+        logger.info(
+          `Successfully updated the DAT enrollment status for patient with ${patientNumber} identification`
+        );
+      } else {
+        logger.warn(
+          `Failed to update the DAT enrollment status for patient with ${patientNumber} identification number`
+        );
+        logImportSummary(importResponse);
+      }
     } else {
       logger.warn(
         `There are errors in saving the DAT enrollment status for patient with ${patientNumber} identification number`
@@ -209,7 +229,8 @@ export async function updateDATEnrollmentStatus(
 export async function getDhis2TrackedEntityInstancesByAttribute(
   program: string,
   values: string[],
-  attribute: string
+  attribute: string,
+  loggerStatus = false
 ): Promise<Array<{ [key: string]: any }>> {
   logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
   const sanitizedTrackedEntityInstances: { [key: string]: string }[] = [];
@@ -223,7 +244,6 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
       const url = `trackedEntityInstances.json?fields=attributes,orgUnit,trackedEntityInstance&ouMode=ALL&filter=${attribute}:in:${valueGroup.join(
         ";"
       )}&program=${program}&paging=false`;
-
       const { data, status } = await dhis2Client.get(url);
       if (status === 200) {
         const { trackedEntityInstances } = data;
@@ -242,18 +262,21 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
             });
           }
         );
-        logger.info(
-          `Fetched tracked entity instances from ${program} program: ${page}/${chunkedValues.length}`
-        );
+        loggerStatus &&
+          logger.info(
+            `Fetched tracked entity instances from ${program} program: ${page}/${chunkedValues.length}`
+          );
       } else {
-        logger.warn(
-          `Failed to fetch tracked entity instances for ${page} page`
-        );
+        loggerStatus &&
+          logger.warn(
+            `Failed to fetch tracked entity instances for ${page} page`
+          );
       }
     } catch (error: any) {
-      logger.warn(
-        `Failed to fetch tracked entity instances from ${program}. Check the error below!`
-      );
+      loggerStatus &&
+        logger.warn(
+          `Failed to fetch tracked entity instances from ${program}. Check the error below!`
+        );
       logSanitizedConflictsImportSummary(error);
     }
     page++;

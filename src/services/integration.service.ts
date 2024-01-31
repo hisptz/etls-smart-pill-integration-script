@@ -152,7 +152,8 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   let trackedEntityInstances = await getDhis2TrackedEntityInstancesByAttribute(
     program,
     assignedDevices,
-    attributes["deviceIMEInumber"]
+    attributes["deviceIMEInumber"],
+    true
   );
 
   const { startDate, endDate } = duration;

@@ -21,6 +21,11 @@ import { getSystemTimeZone } from "./system.helpers";
 import { updateDATEnrollmentStatus } from "./dhis2-api.helpers";
 import { Response } from "express";
 
+interface ResponseData {
+  statusCode: number;
+  body: Record<string, any>;
+}
+
 export function binaryToDecimal(binaryString: string): number {
   const binaryArray = binaryString.split("").reverse();
   let decimalValue = 0;
@@ -62,12 +67,12 @@ export function getDeviceStatus(status: string): string {
   return statusCode == 1
     ? DEVICE_LINKED
     : statusCode == 2
-    ? DEVICE_AVAILABLE
-    : statusCode == 3
-    ? DAMAGED_OR_LOST
-    : statusCode == 9
-    ? DEVICE_UNAVAILABLE
-    : "";
+      ? DEVICE_AVAILABLE
+      : statusCode == 3
+        ? DAMAGED_OR_LOST
+        : statusCode == 9
+          ? DEVICE_UNAVAILABLE
+          : "";
 }
 
 export function getDeviceBatteryLevel(batteryLevel: string): string {
@@ -78,12 +83,12 @@ export function sanitizeAdherenceCode(code: string): string {
   return code === "0"
     ? NONE_RECEIVED
     : code === "1"
-    ? RECEIVED_ONCE
-    : code === "2"
-    ? RECEIVED_MULTIPLE
-    : code === "9"
-    ? HEARTBEAT_RECEIVED
-    : NONE_RECEIVED;
+      ? RECEIVED_ONCE
+      : code === "2"
+        ? RECEIVED_MULTIPLE
+        : code === "9"
+          ? HEARTBEAT_RECEIVED
+          : NONE_RECEIVED;
 }
 
 export function getSanitizedAdherence(
@@ -175,9 +180,8 @@ export async function assignEpisodeToDevice(
   trackedEntityInstance: string,
   program: string,
   programStage: string,
-  orgUnit: string,
-  response: Response
-): Promise<void> {
+  orgUnit: string
+): Promise<ResponseData> {
   // Assigning episode to device
   const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${deviceImei}`;
   const { data } = await wisePillClient.put(assignDeviceUrl);
@@ -200,19 +204,24 @@ export async function assignEpisodeToDevice(
     const setTimeZoneUrl = `devices/setTimezone?device_imei=${deviceImei}&timezone=${timeZone}`;
     await wisePillClient.put(setTimeZoneUrl);
 
-    response.status(201).send({
-      status: 201,
-      episode: episodeId,
-      message: `Device ${deviceImei} assigned to ${patientId} at timezone ${timeZone}`,
-    });
+    return {
+      statusCode: 200,
+      body: {
+        status: 201,
+        episode: episodeId,
+        message: `Device ${deviceImei} assigned to ${patientId} at timezone ${timeZone}`,
+      },
+    };
   } else {
-    response.status(409).send({ message: deviceAssignmentResult });
+    return {
+      statusCode: 409,
+      body: { message: deviceAssignmentResult },
+    };
   }
 }
 
 export async function unassignPreviousLinkedEpisodes(
-  deviceImei: string,
-  response: Response
+  deviceImei: string
 ): Promise<void> {
   const deviceAvailableStatus = 2;
   const getEpisodesUrl = `devices/unassignDevice?device_status=device_status=${deviceAvailableStatus}&device_imei=${deviceImei}`;
@@ -223,9 +232,9 @@ export async function unassignPreviousLinkedEpisodes(
     if (statusCode == 0) {
       return;
     } else {
-      response.send(409).send({
-        message: `Could not clear previous episodes linked to ${deviceImei}. ${message}`,
-      });
+      new Error(
+        `Could not clear previous episodes linked to ${deviceImei}. ${message}`
+      );
     }
   }
 }
@@ -313,9 +322,7 @@ export async function getDeviceDetailsFromWisepillAPI(
 }
 
 export async function createDeviceWisepillEpisodes(
-  patientId: string,
-  imei: string,
-  res: Response
+  patientId: string
 ): Promise<string | null> {
   // Creating episode if there are no episodes related to the patient
   const date = DateTime.now().toFormat("yyyy-MM-dd");
@@ -326,15 +333,6 @@ export async function createDeviceWisepillEpisodes(
     Result: message,
     episode_id: createdEpisodeId,
   }: any = data;
-
-  if (createEpisodeResultCode !== 0) {
-    res.status(409).send({
-      message:
-        createEpisodeResultCode == 1
-          ? `Episode already exist for ${imei}`
-          : message ?? `Failed to create Episode for ${imei}`,
-    });
-  }
 
   return createdEpisodeId ?? null;
 }
