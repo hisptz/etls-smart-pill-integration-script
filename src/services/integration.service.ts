@@ -6,19 +6,7 @@ import {
   Episode,
 } from "../types";
 import { DateTime } from "luxon";
-import {
-  map,
-  head,
-  chunk,
-  find,
-  forEach,
-  filter,
-  groupBy,
-  orderBy,
-  last,
-  keys,
-  values,
-} from "lodash";
+import { map, head, chunk, find, forEach, filter, last, values } from "lodash";
 
 import logger from "../logging";
 import {
@@ -164,7 +152,8 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   let trackedEntityInstances = await getDhis2TrackedEntityInstancesByAttribute(
     program,
     assignedDevices,
-    attributes["deviceIMEInumber"]
+    attributes["deviceIMEInumber"],
+    true
   );
 
   const { startDate, endDate } = duration;

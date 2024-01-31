@@ -21,6 +21,11 @@ import { getSystemTimeZone } from "./system.helpers";
 import { updateDATEnrollmentStatus } from "./dhis2-api.helpers";
 import { Response } from "express";
 
+interface ResponseData {
+  statusCode: number;
+  body: Record<string, any>;
+}
+
 export function binaryToDecimal(binaryString: string): number {
   const binaryArray = binaryString.split("").reverse();
   let decimalValue = 0;
@@ -62,12 +67,12 @@ export function getDeviceStatus(status: string): string {
   return statusCode == 1
     ? DEVICE_LINKED
     : statusCode == 2
-    ? DEVICE_AVAILABLE
-    : statusCode == 3
-    ? DAMAGED_OR_LOST
-    : statusCode == 9
-    ? DEVICE_UNAVAILABLE
-    : "";
+      ? DEVICE_AVAILABLE
+      : statusCode == 3
+        ? DAMAGED_OR_LOST
+        : statusCode == 9
+          ? DEVICE_UNAVAILABLE
+          : "";
 }
 
 export function getDeviceBatteryLevel(batteryLevel: string): string {
@@ -78,12 +83,12 @@ export function sanitizeAdherenceCode(code: string): string {
   return code === "0"
     ? NONE_RECEIVED
     : code === "1"
-    ? RECEIVED_ONCE
-    : code === "2"
-    ? RECEIVED_MULTIPLE
-    : code === "9"
-    ? HEARTBEAT_RECEIVED
-    : NONE_RECEIVED;
+      ? RECEIVED_ONCE
+      : code === "2"
+        ? RECEIVED_MULTIPLE
+        : code === "9"
+          ? HEARTBEAT_RECEIVED
+          : NONE_RECEIVED;
 }
 
 export function getSanitizedAdherence(
@@ -172,8 +177,11 @@ export async function assignEpisodeToDevice(
   episodeId: string,
   deviceImei: string,
   patientId: string,
-  response: Response
-): Promise<void> {
+  trackedEntityInstance: string,
+  program: string,
+  programStage: string,
+  orgUnit: string
+): Promise<ResponseData> {
   // Assigning episode to device
   const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${deviceImei}`;
   const { data } = await wisePillClient.put(assignDeviceUrl);
@@ -183,44 +191,50 @@ export async function assignEpisodeToDevice(
   }: any = data;
   if (deviceAssignmentCode == 0) {
     // creating an enrollment signal in DHIS2
-    await updateDATEnrollmentStatus(patientId);
+    await updateDATEnrollmentStatus(
+      patientId,
+      trackedEntityInstance,
+      program,
+      programStage,
+      orgUnit
+    );
 
     // updating the device timezone
     const timeZone = getSystemTimeZone();
     const setTimeZoneUrl = `devices/setTimezone?device_imei=${deviceImei}&timezone=${timeZone}`;
     await wisePillClient.put(setTimeZoneUrl);
 
-    response.status(201).send({
-      status: 201,
-      episode: episodeId,
-      message: `Device ${deviceImei} assigned to ${patientId} at timezone ${timeZone}`,
-    });
+    return {
+      statusCode: 200,
+      body: {
+        status: 201,
+        episode: episodeId,
+        message: `Device ${deviceImei} assigned to ${patientId} at timezone ${timeZone}`,
+      },
+    };
   } else {
-    response.status(409).send({ message: deviceAssignmentResult });
+    return {
+      statusCode: 409,
+      body: { message: deviceAssignmentResult },
+    };
   }
 }
 
-export async function closePreviousLinkedEpisodes(
+export async function unassignPreviousLinkedEpisodes(
   deviceImei: string
 ): Promise<void> {
-  const activeEpisodeStatus = 1;
-  const getEpisodesUrl = `episodes/getEpisodes?episode_status=${activeEpisodeStatus}&device_imei=${deviceImei}`;
+  const deviceAvailableStatus = 2;
+  const getEpisodesUrl = `devices/unassignDevice?device_status=device_status=${deviceAvailableStatus}&device_imei=${deviceImei}`;
 
-  const { data, status } = await wisePillClient.get(getEpisodesUrl);
+  const { data, status } = await wisePillClient.put(getEpisodesUrl);
   if (status === 200) {
-    const { ResultCode: episodeRequestStatus, records: episodeRecords }: any =
-      data;
-
-    if (parseInt(`${episodeRequestStatus}`) === 0) {
-      const episode = head(episodeRecords) as any;
-      const { episode_id } = episode;
-      if (episode_id) {
-        const now = DateTime.now().toFormat("yyyy-MM-dd");
-        const unassignEpisodeUrl = `episodes/closeEpisode?episode_id=${episode_id}&episode_end_date=${now}`;
-        await wisePillClient.put(unassignEpisodeUrl);
-      }
-    } else {
+    const { ResultCode: statusCode, Result: message }: any = data;
+    if (statusCode == 0) {
       return;
+    } else {
+      new Error(
+        `Could not clear previous episodes linked to ${deviceImei}. ${message}`
+      );
     }
   }
 }
@@ -299,5 +313,26 @@ export async function getDeviceDetailsFromWisepillAPI(
   const { status, data } = await wisePillClient.get(
     `devices/getDevices.php?device_imei=${imei}`
   );
+  if (data && data.ResultCode == 0) {
+    const { records } = data;
+    const [device] = records;
+    return { data: device, status };
+  }
   return { data, status };
+}
+
+export async function createDeviceWisepillEpisodes(
+  patientId: string
+): Promise<string | null> {
+  // Creating episode if there are no episodes related to the patient
+  const date = DateTime.now().toFormat("yyyy-MM-dd");
+  const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
+  const { data } = await wisePillClient.post(createEpisodeUrl);
+  const {
+    ResultCode: createEpisodeResultCode,
+    Result: message,
+    episode_id: createdEpisodeId,
+  }: any = data;
+
+  return createdEpisodeId ?? null;
 }
