@@ -469,7 +469,9 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
         orgUnit,
         episodeId: fetchedEpisodeId,
       } = await getPatientDetailsFromDHIS2(patientId);
+
       episodeId = fetchedEpisodeId ?? null;
+      const episodeIdAlreadyExisted = episodeId ? true : false;
 
       if (!trackedEntityInstance) {
         return res
@@ -497,7 +499,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             trackedEntityInstance,
             program,
             programStage,
-            orgUnit
+            orgUnit,
+            episodeIdAlreadyExisted
           );
 
           return res.status(statusCode).json(body);
@@ -521,7 +524,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             trackedEntityInstance,
             program,
             programStage,
-            orgUnit
+            orgUnit,
+            episodeIdAlreadyExisted
           );
 
           return res.status(statusCode).json(body);

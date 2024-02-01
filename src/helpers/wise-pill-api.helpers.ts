@@ -180,9 +180,22 @@ export async function assignEpisodeToDevice(
   trackedEntityInstance: string,
   program: string,
   programStage: string,
-  orgUnit: string
+  orgUnit: string,
+  clearEpisodeLinkages: boolean = false
 ): Promise<ResponseData> {
   // Assigning episode to device
+
+  if (clearEpisodeLinkages) {
+    try {
+      const unlinkEpisodeUrl = `devices/unassignDevice?episode_id=${episodeId}`;
+      await wisePillClient.put(unlinkEpisodeUrl);
+    } catch (error) {
+      logger.error(
+        `Failed to unlink episode ${episodeId} from previous devices for patient ${patientId}`
+      );
+    }
+  }
+
   const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${deviceImei}`;
   const { data } = await wisePillClient.put(assignDeviceUrl);
   const {
