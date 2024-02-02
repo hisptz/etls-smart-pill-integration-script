@@ -252,7 +252,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
           ({ attributes, trackedEntityInstance, orgUnit }) => {
             const { value: imei } = find(
               attributes,
-              ({ attribute }) => attribute === attribute
+              ({ attribute: attributeId }) => attribute === attributeId
             );
             sanitizedTrackedEntityInstances.push({
               imei,
@@ -262,21 +262,26 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
             });
           }
         );
-        loggerStatus &&
+        if (loggerStatus) {
           logger.info(
             `Fetched tracked entity instances from ${program} program: ${page}/${chunkedValues.length}`
           );
+        }
       } else {
-        loggerStatus &&
+        if (loggerStatus) {
           logger.warn(
             `Failed to fetch tracked entity instances for ${page} page`
           );
+        }
       }
     } catch (error: any) {
-      loggerStatus &&
+      if (loggerStatus) {
         logger.warn(
           `Failed to fetch tracked entity instances from ${program}. Check the error below!`
         );
+        logger.error(error.toString());
+      }
+
       logSanitizedConflictsImportSummary(error);
     }
     page++;
