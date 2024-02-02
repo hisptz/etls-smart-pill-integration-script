@@ -114,10 +114,9 @@ function getTrackedEntityInstanceWithEpisodesMapping(
   let mappedTrackedEntityInstances: Record<string, any> = {};
   forEach(trackedEntityInstances, (tei) => {
     const { attributes, trackedEntityInstance } = tei;
-    const { value: episodeId } = find(
-      attributes,
-      ({ attribute }) => attribute === episodeIdAttribute
-    );
+    const { value: episodeId } =
+      find(attributes, ({ attribute }) => attribute === episodeIdAttribute) ??
+      {};
     if (episodeId) {
       mappedTrackedEntityInstances[trackedEntityInstance] = episodeId;
     }
@@ -273,6 +272,7 @@ function generateEventPayload(
     logger.info(
       `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntityInstance} assigned to device ${imei}`
     );
+    // TODO see a better way to escape use of last seen date
     if (teiEpisode) {
       const { adherenceString, lastSeen, batteryLevel, deviceStatus, imei } =
         teiEpisode;
