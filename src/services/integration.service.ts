@@ -100,7 +100,12 @@ export async function startIntegrationProcess({
         );
       }
     }
-  } catch (error: any) {}
+  } catch (error: any) {
+    logger.error(
+      `An error occurred while running the integration script. Check the error below`
+    );
+    logger.error(error.toString());
+  }
 
   logger.info(
     `Terminating the integration process at ${DateTime.now().toISO()}`
@@ -114,10 +119,9 @@ function getTrackedEntityInstanceWithEpisodesMapping(
   let mappedTrackedEntityInstances: Record<string, any> = {};
   forEach(trackedEntityInstances, (tei) => {
     const { attributes, trackedEntityInstance } = tei;
-    const { value: episodeId } = find(
-      attributes,
-      ({ attribute }) => attribute === episodeIdAttribute
-    );
+    const { value: episodeId } =
+      find(attributes, ({ attribute }) => attribute === episodeIdAttribute) ??
+      {};
     if (episodeId) {
       mappedTrackedEntityInstances[trackedEntityInstance] = episodeId;
     }
@@ -274,11 +278,17 @@ function generateEventPayload(
       `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntityInstance} assigned to device ${imei}`
     );
     if (teiEpisode) {
-      const { adherenceString, lastSeen, batteryLevel, deviceStatus, imei } =
-        teiEpisode;
+      const {
+        adherenceString,
+        episodeStartDate,
+        lastSeen,
+        batteryLevel,
+        deviceStatus,
+        imei,
+      } = teiEpisode;
       const adherence = (adherenceString ?? "").split(",");
       // if not range is specified
-      if (!startDate && !endDate) {
+      if (!startDate && !endDate && lastSeen) {
         const lastSeenDate = DateTime.fromSQL(lastSeen);
         const now = DateTime.now();
         // if the last seen for the episode is the current day
@@ -310,7 +320,10 @@ function generateEventPayload(
         }
       } else {
         // if there is some range specified
-        const episodeAdherence = getSanitizedAdherence(adherence, lastSeen);
+        const episodeAdherence = getSanitizedAdherence(
+          adherence,
+          episodeStartDate
+        );
 
         // evaluation of the range for running the script
         const evaluationStartDate = startDate
