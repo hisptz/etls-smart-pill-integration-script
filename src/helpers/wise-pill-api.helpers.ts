@@ -99,8 +99,8 @@ export function getSanitizedAdherence(
   const endDate = DateTime.fromSQL(end);
 
   let daysToRollback = 0;
-  for (const adherence of adherenceStrings.reverse()) {
-    const date = endDate.minus({ days: daysToRollback }).toISO()!;
+  for (const adherence of adherenceStrings) {
+    const date = endDate.plus({ days: daysToRollback }).toISO()!;
     episodeAdherence.push({
       date,
       adherence,
@@ -300,11 +300,11 @@ export async function getWisepillEpisodeValues(
         const episode = {
           id,
           imei,
-          adherenceString,
           episodeStartDate,
-          lastSeen,
           deviceStatus: getDeviceStatus(deviceStatus),
           batteryLevel: getDeviceBatteryLevel(batteryLevel),
+          adherenceString: adherenceString ?? "",
+          lastSeen: lastSeen ?? "",
         };
         sanitizedEpisodes.push(episode);
       }
