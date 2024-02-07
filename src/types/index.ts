@@ -50,6 +50,8 @@ export interface DeviceDetails {
   lastOpened: string;
   lastHeartBeat: string;
   deviceStatus: string;
+  enrollmentDate?: string;
+  deviceOpenings?: number;
 }
 
 export interface Device extends DeviceDetails {
