@@ -92,7 +92,7 @@ export function sanitizeAdherenceCode(code: string): string {
 
 export function getSanitizedAdherence(
   adherenceStrings: string[],
-  end: string,
+  end: string
 ): AdherenceMapping[] {
   const episodeAdherence: AdherenceMapping[] = [];
   const endDate = DateTime.fromSQL(end);
@@ -111,7 +111,7 @@ export function getSanitizedAdherence(
 }
 
 export function sanitizeDeviceList(
-  devicesMergedWithRecords: any[],
+  devicesMergedWithRecords: any[]
 ): Array<Device> {
   return map(
     devicesMergedWithRecords,
@@ -131,7 +131,7 @@ export function sanitizeDeviceList(
         daysDeviceInUse: daysDeviceInUse ?? 0,
         deviceStatus: getDeviceStatus(deviceStatus),
       };
-    },
+    }
   );
 }
 
@@ -142,7 +142,7 @@ export function sanitizeDatesIntoDateTime(date: string): string {
 export function generateDataValuesFromAdherenceMapping(
   { adherence, date }: AdherenceMapping,
   batteryLevel?: string,
-  deviceStatus?: string,
+  deviceStatus?: string
 ): Array<DHIS2DataValue> {
   const dataValues: Array<DHIS2DataValue> = [
     {
@@ -180,7 +180,7 @@ export async function assignEpisodeToDevice(
   program: string,
   programStage: string,
   orgUnit: string,
-  clearEpisodeLinkages: boolean = false,
+  clearEpisodeLinkages: boolean = false
 ): Promise<ResponseData> {
   // Assigning episode to device
 
@@ -190,7 +190,7 @@ export async function assignEpisodeToDevice(
       await wisePillClient.put(unlinkEpisodeUrl);
     } catch (error) {
       logger.error(
-        `Failed to unlink episode ${episodeId} from previous devices for patient ${patientId}`,
+        `Failed to unlink episode ${episodeId} from previous devices for patient ${patientId}`
       );
     }
   }
@@ -208,7 +208,7 @@ export async function assignEpisodeToDevice(
       trackedEntityInstance,
       program,
       programStage,
-      orgUnit,
+      orgUnit
     );
 
     // updating the device timezone
@@ -233,26 +233,26 @@ export async function assignEpisodeToDevice(
 }
 
 export async function unassignPreviousLinkedEpisodes(
-  deviceImei: string,
+  deviceImei: string
 ): Promise<void> {
   const deviceAvailableStatus = 2;
-  const getEpisodesUrl = `devices/unassignDevice?device_status=device_status=${deviceAvailableStatus}&device_imei=${deviceImei}`;
+  const unlinkDeviceUrl = `devices/unassignDevice?device_status=device_status=${deviceAvailableStatus}&device_imei=${deviceImei}`;
 
-  const { data, status } = await wisePillClient.put(getEpisodesUrl);
+  const { data, status } = await wisePillClient.put(unlinkDeviceUrl);
   if (status === 200) {
     const { ResultCode: statusCode, Result: message }: any = data;
     if (statusCode == 0) {
       return;
     } else {
       new Error(
-        `Could not clear previous episodes linked to ${deviceImei}. ${message}`,
+        `Could not clear previous episodes linked to ${deviceImei}. ${message}`
       );
     }
   }
 }
 
 export async function getWisepillEpisodeValues(
-  episodeIds: string[],
+  episodeIds: string[]
 ): Promise<Episode[]> {
   const episodeUrl = `episodes/getEpisodes`;
   const deviceFetchUrl = `devices/getDeviceDetail`;
@@ -291,7 +291,7 @@ export async function getWisepillEpisodeValues(
       } = episode;
       const deviceDetails = find(
         devices,
-        ({ device_imei: deviceImei }) => deviceImei == imei,
+        ({ device_imei: deviceImei }) => deviceImei == imei
       );
       const { device_status: deviceStatus } = deviceDetails ?? {};
 
@@ -309,7 +309,7 @@ export async function getWisepillEpisodeValues(
       }
     }
     logger.info(
-      `Fetched wisepill episodes: ${fetchCount}/${chuckedEpisodeIds.length}`,
+      `Fetched wisepill episodes: ${fetchCount}/${chuckedEpisodeIds.length}`
     );
   }
 
@@ -317,9 +317,9 @@ export async function getWisepillEpisodeValues(
 }
 
 export async function getDeviceDetailsFromWisepillAPI(
-  imei: string,
+  imei: string
 ): Promise<{ data: any; status: any }> {
-  var data: any;
+  var data: any = {};
   var status: any;
 
   const activeEpisodeStatus = 1;
@@ -331,7 +331,7 @@ export async function getDeviceDetailsFromWisepillAPI(
     wisePillClient.get(deviceDetailsUrl),
   ]);
 
-  const { data: episodeData, status: episodeQueryStatus } = episodeResponse;
+  const { data: episodeData } = episodeResponse;
   const { data: deviceDetailsData, status: deviceDetailsStatus } =
     deviceDetailsResponse;
 
@@ -344,6 +344,14 @@ export async function getDeviceDetailsFromWisepillAPI(
       ...data,
       ...device,
     };
+  } else {
+    const { Result, ResultCode } = deviceDetailsData;
+    data = {
+      ...data,
+      Result,
+      ResultCode,
+    };
+    return { data, status };
   }
 
   if (episodeData && episodeData.ResultCode == 0) {
@@ -353,13 +361,20 @@ export async function getDeviceDetailsFromWisepillAPI(
       ...data,
       ...episode,
     };
+  } else {
+    const { Result, ResultCode } = episodeData;
+    data = {
+      ...data,
+      Result,
+      ResultCode,
+    };
   }
 
   return { data, status };
 }
 
 export async function createDeviceWisepillEpisodes(
-  patientId: string,
+  patientId: string
 ): Promise<string | null> {
   // Creating episode if there are no episodes related to the patient
   const date = DateTime.now().toFormat("yyyy-MM-dd");
