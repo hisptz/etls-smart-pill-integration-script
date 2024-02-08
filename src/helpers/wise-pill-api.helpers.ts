@@ -236,7 +236,7 @@ export async function unassignPreviousLinkedEpisodes(
   deviceImei: string
 ): Promise<void> {
   const deviceAvailableStatus = 2;
-  const unlinkDeviceUrl = `devices/unassignDevice?device_status=device_status=${deviceAvailableStatus}&device_imei=${deviceImei}`;
+  const unlinkDeviceUrl = `devices/unassignDevice?device_status=${deviceAvailableStatus}&device_imei=${deviceImei}`;
 
   const { data, status } = await wisePillClient.put(unlinkDeviceUrl);
   if (status === 200) {
@@ -362,11 +362,10 @@ export async function getDeviceDetailsFromWisepillAPI(
       ...episode,
     };
   } else {
-    const { Result, ResultCode } = episodeData;
+    const { Result } = episodeData;
     data = {
       ...data,
       Result,
-      ResultCode,
     };
   }
 
