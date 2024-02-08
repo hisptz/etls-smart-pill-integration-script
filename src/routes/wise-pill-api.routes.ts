@@ -449,7 +449,7 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
       error: bodyValidationError.details.map((error: any) => error.message),
     });
   }
-  const { imei, patientId } = req.body;
+  const { imei, patientId, force } = req.body;
   let episodeId: string | null = null;
 
   try {
@@ -508,37 +508,41 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
           return res.status(statusCode).json(body);
         }
       } else if (deviceStatus == assignedDeviceStatus) {
-        return res.status(409).json({
-          message: `Device ${imei} is already assigned to another client. Verify the device IMEI number or contact your system administrator for follow up.`,
-        });
-        // await unassignPreviousLinkedEpisodes(imei);
-        // if (!episodeId) {
-        //   // Creating episode if there are no episodes related to the patient
-        //   episodeId = await createDeviceWisepillEpisodes(patientId);
-        //   if (!episodeId) {
-        //     return res.status(409).json({
-        //       message: `Could not generate episode for device ${imei}`,
-        //     });
-        //   }
-        // }
-        // if (episodeId) {
-        //   const { statusCode, body } = await assignEpisodeToDevice(
-        //     episodeId,
-        //     imei,
-        //     patientId,
-        //     trackedEntityInstance,
-        //     program,
-        //     programStage,
-        //     orgUnit,
-        //     episodeIdAlreadyExisted
-        //   );
+        if (!force) {
+          return res.status(409).json({
+            message: `Device ${imei} is already assigned to another client. Verify the device IMEI number or contact your system administrator for follow up.`,
+            imei,
+            patientId,
+          });
+        }
+        await unassignPreviousLinkedEpisodes(imei);
+        if (!episodeId) {
+          // Creating episode if there are no episodes related to the patient
+          episodeId = await createDeviceWisepillEpisodes(patientId);
+          if (!episodeId) {
+            return res.status(409).json({
+              message: `Could not generate episode for device ${imei}`,
+            });
+          }
+        }
+        if (episodeId) {
+          const { statusCode, body } = await assignEpisodeToDevice(
+            episodeId,
+            imei,
+            patientId,
+            trackedEntityInstance,
+            program,
+            programStage,
+            orgUnit,
+            episodeIdAlreadyExisted
+          );
 
-        //   return res.status(statusCode).json(body);
-        // } else {
-        //   return res.status(404).json({
-        //     message: `Episodes assigned to device ${imei} could not be found`,
-        //   });
-        // }
+          return res.status(statusCode).json(body);
+        } else {
+          return res.status(404).json({
+            message: `Episodes assigned to device ${imei} could not be found`,
+          });
+        }
       } else if (deviceStatus === damagedDeviceStatus) {
         return res.status(409).json({
           message: `Device ${imei} is marked as damaged. Contact your system administrator for follow up.`,

@@ -7,6 +7,7 @@ export const deviceSchema = Joi.object({
 export const createEpisodeSchema = Joi.object({
   imei: Joi.string().required(),
   patientId: Joi.string().required(),
+  force: Joi.boolean().optional(),
 });
 
 export const addAlarmSchema = Joi.object({
