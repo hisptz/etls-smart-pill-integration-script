@@ -1,38 +1,24 @@
-export interface Duration {
+export type Duration = {
   startDate?: string;
   endDate?: string;
-}
+};
 
-export interface DeviceDetails {
-  alarmDays?: string;
-  alarmTime?: string;
-  refillAlarm?: string;
-  batteryLevel: number;
-  lastOpened: string;
-  lastHeartBeat: string;
-  deviceStatus: string;
-}
-
-export interface Episode {
+export type Episode = {
+  id: string;
   imei: string;
   adherenceString: string;
   episodeStartDate: string;
   lastSeen: string;
-  batteryLevel: number;
+  batteryLevel: string;
   deviceStatus: string;
-}
+};
 
-export interface AdherenceMapping {
+export type AdherenceMapping = {
   date: string;
   adherence: string;
-}
+};
 
-export interface Device extends DeviceDetails {
-  daysDeviceInUse: number;
-  imei: string;
-}
-
-export interface DHIS2Event {
+export type DHIS2Event = {
   event: string;
   trackedEntityInstance: string;
   program: string;
@@ -47,9 +33,28 @@ export interface DHIS2Event {
     | "VISITED"
     | "OVERDUE";
   dataValues: Array<DHIS2DataValue>;
-}
+};
 
-export interface DHIS2DataValue {
+export type DHIS2DataValue = {
   dataElement: string;
   value: string | number | boolean;
+};
+
+export interface DeviceDetails {
+  alarmDays?: string;
+  alarmTime?: string;
+  alarmStatus?: number;
+  refillAlarmStatus?: number;
+  refillAlarm?: string;
+  batteryLevel: string;
+  lastOpened: string;
+  lastHeartBeat: string;
+  deviceStatus: string;
+  enrollmentDate?: string;
+  deviceOpenings?: number;
+}
+
+export interface Device extends DeviceDetails {
+  daysDeviceInUse: number;
+  imei: string;
 }

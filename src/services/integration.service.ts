@@ -6,29 +6,21 @@ import {
   Episode,
 } from "../types";
 import { DateTime } from "luxon";
-import {
-  map,
-  head,
-  chunk,
-  find,
-  forEach,
-  filter,
-  groupBy,
-  orderBy,
-  last,
-} from "lodash";
+import { map, head, chunk, find, forEach, filter, last, values } from "lodash";
 
 import logger from "../logging";
 import {
   getAssignedDevices,
+  getDhis2TrackedEntityInstancesByAttribute,
   getProgramMapping,
   logImportSummary,
   logSanitizedConflictsImportSummary,
 } from "../helpers/dhis2-api.helpers";
 import {
   generateDataValuesFromAdherenceMapping,
-  getDevicesWisepillEpisodes,
+  getWisepillEpisodeValues,
   getSanitizedAdherence,
+  sanitizeDatesIntoDateTime,
 } from "../helpers/wise-pill-api.helpers";
 import dhis2Client from "../clients/dhis2";
 import { uid } from "@hisptz/dhis2-utils";
@@ -46,43 +38,96 @@ export async function startIntegrationProcess({
         ` at ${DateTime.now().toISO()}`
     );
 
-    const { program, programStage, attributes } = await getProgramMapping();
-    if (!program || !programStage || !attributes) {
-      logger.warn(`There are program metadata configured for migration`);
+    logger.info("Fetching DAT devices assigned in DHIS2.");
+    const assignedDevices = await getAssignedDevices();
+
+    logger.info("Fetching configured program mapping from DHIS2.");
+    const programMapping = await getProgramMapping();
+
+    if (!programMapping || programMapping.length <= 0) {
+      logger.warn(`There are No program metadata configured for migration`);
       logger.error("Terminating the integration script!");
       return;
     }
 
-    logger.info("Fetching DAT devices assigned in DHIS2.");
-    const assignedDevices = await getAssignedDevices();
+    for (const { program, programStage, attributes } of programMapping) {
+      if (!program || !programStage || !attributes) {
+        logger.warn(
+          `There are program mapping is wrongly configured! Revisit configurations to ensure program, program and attributes are well configured`
+        );
+        break;
+      }
 
-    const trackedEntityInstances =
-      await getDhis2TrackedEntityInstancesWithEvents(
-        { program, programStage, attributes },
-        assignedDevices,
-        { startDate, endDate }
+      const trackedEntityInstances =
+        await getDhis2TrackedEntityInstancesWithEvents(
+          { program, programStage, attributes },
+          assignedDevices,
+          { startDate, endDate }
+        );
+
+      logger.info("Mapping Tracked Entity Instances with episodes");
+      const trackedEntityInstancesWithEpisodesMapping =
+        getTrackedEntityInstanceWithEpisodesMapping(
+          trackedEntityInstances,
+          attributes["episodeId"]
+        );
+
+      logger.info("Fetching Adherence episodes from Wisepill.");
+      const episodes = await getWisepillEpisodeValues(
+        values(trackedEntityInstancesWithEpisodesMapping)
       );
 
-    logger.info("Fetching Adherence episodes from Wisepill.");
-    const episodes = await getDevicesWisepillEpisodes(assignedDevices);
+      const eventPayloads = generateEventPayload(
+        episodes,
+        trackedEntityInstances,
+        program,
+        programStage,
+        trackedEntityInstancesWithEpisodesMapping,
+        {
+          startDate,
+          endDate,
+        }
+      );
 
-    const eventPayloads = generateEventPayload(
-      episodes,
-      trackedEntityInstances,
-      program,
-      programStage,
-      {
-        startDate,
-        endDate,
+      if (eventPayloads.length) {
+        logger.info(
+          `Uploading ${eventPayloads.length} events for program stage ${programStage}`
+        );
+        await uploadDhis2Events(eventPayloads);
+      } else {
+        logger.info(
+          `Skipping uploading events from program stage ${programStage} since there are no events`
+        );
       }
+    }
+  } catch (error: any) {
+    logger.error(
+      `An error occurred while running the integration script. Check the error below`
     );
-
-    await uploadDhis2Events(eventPayloads);
-  } catch (error: any) {}
+    logger.error(error.toString());
+  }
 
   logger.info(
     `Terminating the integration process at ${DateTime.now().toISO()}`
   );
+}
+
+function getTrackedEntityInstanceWithEpisodesMapping(
+  trackedEntityInstances: Record<string, any>,
+  episodeIdAttribute: string
+) {
+  let mappedTrackedEntityInstances: Record<string, any> = {};
+  forEach(trackedEntityInstances, (tei) => {
+    const { attributes, trackedEntityInstance } = tei;
+    const { value: episodeId } =
+      find(attributes, ({ attribute }) => attribute === episodeIdAttribute) ??
+      {};
+    if (episodeId) {
+      mappedTrackedEntityInstances[trackedEntityInstance] = episodeId;
+    }
+  });
+
+  return mappedTrackedEntityInstances;
 }
 
 function getEventDuration(startDate?: string, endDate?: string): string {
@@ -105,29 +150,31 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   programMapping: any,
   assignedDevices: string[],
   duration: Duration
-): Promise<{ [key: string]: string }[]> {
-  logger.info("Fetching DHIS2 program mappings.");
+): Promise<Record<string, any>[]> {
   const { program, programStage, attributes } = programMapping;
 
-  let trackedEntityInstances = await getDhis2TrackedEntityInstances(
+  let trackedEntityInstances = await getDhis2TrackedEntityInstancesByAttribute(
     program,
     assignedDevices,
-    attributes
+    attributes["deviceIMEInumber"],
+    true
   );
 
   const { startDate, endDate } = duration;
   const events = await getDhis2Events(programStage, { startDate, endDate });
 
-  logger.info("Organizing DHIS2 tracked entities and events");
+  logger.info(`Organizing DHIS2 tracked entities and events`);
   trackedEntityInstances = map(
     trackedEntityInstances,
-    ({ trackedEntityInstance, imei, orgUnit }) => {
+    ({ trackedEntityInstance, imei, orgUnit, attributes: teiAttributes }) => {
       const teiEvents = filter(
         events,
         ({ trackedEntityInstance: tei }) => trackedEntityInstance === tei
       );
+
       return {
         trackedEntityInstance,
+        attributes: teiAttributes,
         imei,
         orgUnit,
         events: teiEvents,
@@ -136,62 +183,6 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   );
 
   return trackedEntityInstances;
-}
-
-async function getDhis2TrackedEntityInstances(
-  program: string,
-  assignedDevises: string[],
-  attributes: { [key: string]: string }
-): Promise<Array<{ [key: string]: any }>> {
-  logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
-  const sanitizedTrackedEntityInstances: { [key: string]: string }[] = [];
-  const pageSize = 100;
-  const { deviceIMEInumber: imeiAttribute } = attributes;
-
-  const chunkedDevices = chunk(assignedDevises, pageSize);
-
-  let page = 1;
-  for (const devices of chunkedDevices) {
-    try {
-      const url = `trackedEntityInstances.json?fields=attributes,orgUnit,trackedEntityInstance&ouMode=ALL&filter=${imeiAttribute}:in:${devices.join(
-        ";"
-      )}&program=${program}&paging=false`;
-
-      const { data, status } = await dhis2Client.get(url);
-      if (status === 200) {
-        const { trackedEntityInstances } = data;
-        forEach(
-          trackedEntityInstances,
-          ({ attributes, trackedEntityInstance, orgUnit }) => {
-            const { value: imei } = find(
-              attributes,
-              ({ attribute }) => attribute === imeiAttribute
-            );
-            sanitizedTrackedEntityInstances.push({
-              imei,
-              trackedEntityInstance,
-              orgUnit,
-            });
-          }
-        );
-        logger.info(
-          `Fetched tracked entity instances from ${program} program: ${page}/${chunkedDevices.length}`
-        );
-      } else {
-        logger.warn(
-          `Failed to fetch tracked entity instances for ${page} page`
-        );
-      }
-    } catch (error: any) {
-      logger.warn(
-        `Failed to fetch tracked entity instances. Check the error below!`
-      );
-      logSanitizedConflictsImportSummary(error);
-    }
-    page++;
-  }
-
-  return sanitizedTrackedEntityInstances;
 }
 
 async function getDhis2Events(
@@ -211,8 +202,7 @@ async function getDhis2Events(
   const rootOu = await getRootOrganisationUnit();
 
   while (page <= totalPages && rootOu !== "") {
-    const url = `events?fields=event,trackedEntityInstance,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&f&updatedWithin=${eventsLastUpdatedDuration}d&totalPages=true&page=${page}&pageSize=${pageSize}`;
-
+    const url = `events?fields=event,trackedEntityInstance,eventDate,dataValues[dataElement,value]&orgUnit=${rootOu}&ouMode=DESCENDANTS&programStage=${programStage}&lastUpdatedDuration=${eventsLastUpdatedDuration}&totalPages=true&page=${page}&pageSize=${pageSize}`;
     const { data, status } = await dhis2Client.get(url);
     if (status === 200) {
       const { events, pager } = data;
@@ -254,6 +244,7 @@ function generateEventPayload(
   trackedEntityInstances: Array<{ [key: string]: any }>,
   program: string,
   programStage: string,
+  trackedEntityInstancesWithEpisodesMapping: Record<string, any>,
   duration: Duration
 ): any[] {
   logger.info("Preparing the events payloads for migrating to DHIS2");
@@ -261,7 +252,6 @@ function generateEventPayload(
   const eventPayloads: DHIS2Event[] = [];
   const { startDate, endDate } = duration;
   const defaultStartDate = "1970-01-01";
-  const groupedEpisodes = groupBy(episodes, "imei");
 
   for (const {
     imei,
@@ -269,23 +259,38 @@ function generateEventPayload(
     orgUnit,
     events,
   } of trackedEntityInstances) {
-    const teiEpisodes = groupedEpisodes[imei];
+    const teiEpisodeId =
+      trackedEntityInstancesWithEpisodesMapping[trackedEntityInstance];
+
+    if (!teiEpisodeId) {
+      logger.warn(
+        `Tracked entity instance ${trackedEntityInstance} has no episode id`
+      );
+      continue;
+    }
+
+    const teiEpisode = find(
+      episodes,
+      ({ id: episodeId }) => episodeId === teiEpisodeId
+    );
 
     logger.info(
       `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntityInstance} assigned to device ${imei}`
     );
-    if (teiEpisodes && teiEpisodes.length) {
-      const cumulativeEpisodes = getLatestEpisode(teiEpisodes);
-      const { adherenceString, lastSeen, batteryLevel, deviceStatus, imei } =
-        cumulativeEpisodes;
-
+    if (teiEpisode) {
+      const {
+        adherenceString,
+        episodeStartDate,
+        lastSeen,
+        batteryLevel,
+        deviceStatus,
+        imei,
+      } = teiEpisode;
       const adherence = (adherenceString ?? "").split(",");
-
       // if not range is specified
-      if (!startDate && !endDate) {
+      if (!startDate && !endDate && lastSeen) {
         const lastSeenDate = DateTime.fromSQL(lastSeen);
         const now = DateTime.now();
-
         // if the last seen for the episode is the current day
         if ((now.diff(lastSeenDate, ["days"]).toObject().days ?? 0) < 1) {
           const episodeAdherence: AdherenceMapping = {
@@ -315,7 +320,10 @@ function generateEventPayload(
         }
       } else {
         // if there is some range specified
-        const episodeAdherence = getSanitizedAdherence(adherence, lastSeen);
+        const episodeAdherence = getSanitizedAdherence(
+          adherence,
+          episodeStartDate
+        );
 
         // evaluation of the range for running the script
         const evaluationStartDate = startDate
@@ -370,7 +378,7 @@ function getDHIS2EventPayload(
   dataValues: DHIS2DataValue[]
 ): DHIS2Event {
   const sanitizedEventDate = DateTime.fromISO(
-    eventDate.replace(/ /g, "T")
+    sanitizeDatesIntoDateTime(eventDate)
   ).toFormat("yyyy-MM-dd");
   const existingEvent: any =
     events && events.length
@@ -412,19 +420,9 @@ function getDHIS2EventPayload(
   };
 }
 
-function getLatestEpisode(episodes: Episode[]): Episode {
-  logger.info("Accumulating the episodes from the same devices");
-  const orderedEpisodes = orderBy(episodes, ["lastSeen"], ["asc"]);
-  return last(orderedEpisodes) as Episode;
-}
-
 async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
   const paginationSize = 100;
-  logger.info(
-    `Saving ${
-      eventPayloads.length
-    } adherence events into DHIS2 by pagination of ${[paginationSize]}`
-  );
+  logger.info(`Evaluating pagination by ${[paginationSize]} page size`);
   const chunkedEvents = chunk(eventPayloads, paginationSize);
   let page = 1;
 
@@ -454,7 +452,7 @@ async function uploadDhis2Events(eventPayloads: DHIS2Event[]): Promise<void> {
       }
     } catch (error: any) {
       logger.warn(
-        `Failed to save the the adherence events at page ${page}. Check the error below`
+        `Failed to save the adherence events at page ${page}. Check the error below`
       );
       logSanitizedConflictsImportSummary(error);
     }

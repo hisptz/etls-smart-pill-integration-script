@@ -1,8 +1,8 @@
-# DHIS2 TB program and Smart Pill Integration Script
+# DHIS2 and evriMED Integration Script
 
 ## Introduction
 
-This is a node script that integrates the DHIS2 TB instances with the Wisepill API for adherence. This Script runs the migration between the two systems, but also exposes the API to be used by the DHIS2 instance for accessing the Wisepill adherence data
+This script, written in Node.js with TypeScript, facilitates the integration of evriMED data with DHIS2 for tracking adherence to medication regimens. The script not only performs data integration but also abstracts the evriMED API, making it accessible to DHIS2 web applications by encapsulating authentication and adding data sanitization.
 
 ## Tooling
 
@@ -49,12 +49,24 @@ Environment variables can be set by creating `.env` file with contents similar a
 DHIS2_BASE_URL=<url-for-dhis2-instance>
 DHIS2_USERNAME=<dhis2-username>
 DHIS2_PASSWORD=<dhis2-password>
-WISEPILL_BASE_URL=<wisepill-api-url>
-WISEPILL_USERNAME=<wisepill-username>
-WISEPILL_SECRET=<wisepill-secret-key>
+WISEPILL_BASE_URL=<evriMED-api-url>
+WISEPILL_USERNAME=<evriMED-username>
+WISEPILL_SECRET=<evriMED-secret-key>
 PORT=<port-for-api-server>
 SECRET_KEY=<optional-secret-key-for-api>
 ```
+
+Note:
+
+- Below is the definition of the above variables:
+  - DHIS2_BASE_URL: This is the url to the DHIS2 instance.
+  - DHIS2_USERNAME: This is the username for accessing the DHIS2 instance.
+  - DHIS2_PASSWORD: This is the password for accessing the DHIS2 instance.
+  - WISEPILL_BASE_URL: This is the url for accessing the evriMED API.
+  - WISEPILL_USERNAME: This is the username for accessing evriMED API.
+  - TIME_ZONE: This is the optional timezone to be assigned to evriMED devices. If not set, the system timezone will be assigned to the devices.
+  - PORT: This is the port where the exposed API will be accessible by DHIS2 applications. If not set, the API service will be available at port:3000.
+  - SECRET_KEY: This is the secret key that will be used to access the exposed API. This will be supplied to the DAT web application to assist with data fetch to evriMED API.
 
 ### Running the application
 

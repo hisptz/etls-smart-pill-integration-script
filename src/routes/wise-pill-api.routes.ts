@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
 import {
-  head,
   chunk,
   forIn,
   map,
@@ -12,20 +11,25 @@ import {
   reduce,
   first,
 } from "lodash";
-
 import { addAlarmSchema, createEpisodeSchema } from "../schema";
 import {
+  assignEpisodeToDevice,
   binaryToDecimal,
-  closePreviousLinkedEpisodes,
+  createDeviceWisepillEpisodes,
   decimalToBinary,
+  getDeviceBatteryLevel,
+  getDeviceDetailsFromWisepillAPI,
   getDeviceStatus,
   sanitizeDeviceList,
+  unassignPreviousLinkedEpisodes,
 } from "../helpers/wise-pill-api.helpers";
 import wisePillClient from "../clients/wise-pill";
 import { DeviceDetails } from "../types";
-import { getAssignedDevices } from "../helpers/dhis2-api.helpers";
+import {
+  getAssignedDevices,
+  getPatientDetailsFromDHIS2,
+} from "../helpers/dhis2-api.helpers";
 import logger from "../logging";
-import { DateTime } from "luxon";
 
 export const wisePillRouter = Router();
 
@@ -40,10 +44,10 @@ export const wisePillRouter = Router();
  */
 wisePillRouter.get("/", (req: Request, res: Response) => {
   const response = {
-    messsage:
+    message:
       "Welcome to the Wisepill and DHIS2 integration API. Go to {server}/docs for the documentation",
   };
-  res.status(200).send(response);
+  return res.status(200).json(response);
 });
 
 // For setting device alarm
@@ -65,9 +69,15 @@ wisePillRouter.get("/", (req: Request, res: Response) => {
  *               alarm:
  *                 type: string
  *                 description: Alarm to be set for taking medications in the format of hh:mm
+ *               alarmStatus:
+ *                 type: number
+ *                 description: Status of the set alarm, can be 1 for activating the alarm or 0 for deactivating the alarm
  *               refillAlarm:
  *                 type: string
  *                 description:  Alarm to be set for refilling the device with medications in the format of YYYY-MM-DD hh:mm:ss
+ *               refillAlarmStatus:
+ *                 type: string
+ *                 description: Status of the set refill alarm, can be 1 for activating the alarm or 0 for deactivating the alarm
  *               days:
  *                 type: string
  *                 description: This is binary representation of days of the week, SMTWTFS in a string format. e.g. 1111111
@@ -89,6 +99,12 @@ wisePillRouter.get("/", (req: Request, res: Response) => {
  *         description: Failed to set alarm
  */
 wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
+  // validate the Alarm status value
+  const validateAlarmStatusValue = (alarmStatus: any) => {
+    const sanitizedAlarmStatus = parseInt(`${alarmStatus}`);
+    return sanitizedAlarmStatus === 0 || sanitizedAlarmStatus === 1;
+  };
+
   // validate the body
   const { error: bodyValidationError } = addAlarmSchema.validate(req.body);
   if (bodyValidationError) {
@@ -97,13 +113,19 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
     });
   }
 
-  const { alarm, refillAlarm, imei, days } = req.body;
+  const { alarm, alarmStatus, refillAlarmStatus, refillAlarm, imei, days } =
+    req.body;
 
   // If there is alarm to be set
-  if (alarm) {
+  if (alarm || validateAlarmStatusValue(alarmStatus)) {
     const alarmDays = days ? binaryToDecimal(days) : 127;
+    const alarmString = alarm
+      ? `&alarm_time=${alarm}&alarm_days=${alarmDays}`
+      : "";
     const { data } = await wisePillClient.put(
-      `devices/setAlarm?alarm=1&alarm_time=${alarm}&device_imei=${imei}&alarm_days=${alarmDays}`
+      `devices/setAlarm?alarm=${
+        alarmStatus ?? 1
+      }&device_imei=${imei}${alarmString}`
     );
     const { ResultCode: alarmCode, Result: alarmResult } = data;
     if (alarmCode >= 100) {
@@ -115,9 +137,14 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
   }
 
   // If there is refill alarm to be set
-  if (refillAlarm) {
+  if (refillAlarm || validateAlarmStatusValue(refillAlarmStatus)) {
+    const alarmString = refillAlarm
+      ? `&refill_alarm_datetime=${refillAlarm}`
+      : "";
     const { data } = await wisePillClient.put(
-      `devices/setRefillAlarm?refill_alarm=1&refill_alarm_datetime=${refillAlarm}&device_imei=${imei}`
+      `devices/setRefillAlarm?refill_alarm=${
+        refillAlarmStatus ?? 1
+      }&device_imei=${imei}${alarmString}`
     );
     const { ResultCode: refillAlarmCode, Result: refillAlarmResult } = data;
     if (refillAlarmCode >= 100) {
@@ -131,7 +158,7 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
   if (!refillAlarm && !alarm) {
     return res
       .status(409)
-      .json({ status: 409, message: "No alarm was specifiied" });
+      .json({ status: 409, message: "No alarm was specified" });
   }
 
   return res.status(201).json({ message: "Alarm set successfully" });
@@ -161,7 +188,7 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
  *                         description: Device IMEI number
  *                       lastHeartBeat:
  *                         type: string
- *                         description: Time for the last heart beath received by the
+ *                         description: Time for the last heart beat received by the
  *                       email:
  *                         type: string
  *                         format: email
@@ -181,7 +208,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
     return res.status(200).json({ devices: sanitizedDevices });
   }
 
-  const assginedDevicesObject = {
+  const assignedDevicesObject = {
     data: {
       imeis: assignedDevices,
     },
@@ -190,7 +217,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
   const { status, data: devicesResults } = await wisePillClient.get(
     deviceFetchUrl,
     {
-      data: assginedDevicesObject,
+      data: assignedDevicesObject,
     }
   );
   if (status === 200) {
@@ -245,25 +272,25 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
         ...sanitizeDeviceList(devicesMergedWithRecords),
       ];
     }
-    res.status(200).send({ devices: sanitizedDevices });
+    return res.status(200).json({ devices: sanitizedDevices });
   } else {
-    res.status(status).send(devicesResults);
+    return res.status(status).json(devicesResults);
   }
 });
 
-// For fetching device list
+// For fetching device details
 /**
  * @swagger
  * /api/devices/details:
  *   get:
- *     description: Get a list of users based on query parameters
+ *     description: Get all the details of a device
  *     parameters:
  *       - name: imei
  *         description: Specifies the device IMEI number
  *         in: query
  *         required: true
  *         schema:
- *           type: strin
+ *           type: string
  *     responses:
  *       200:
  *         description: Success
@@ -289,10 +316,16 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
  *                   description: The alarm days in binary representation of days of the week, SMTWTFS in a string format. e.g. 1111111
  *                 refillAlarm:
  *                   type: string
- *                   description: Alarm time set for refelling the device with medications
+ *                   description: Alarm time set for refilling the device with medications
  *                 alarmTime:
  *                   type: string
  *                   description: Alarm time set for taking medications
+ *                 alarmStatus:
+ *                   type: number
+ *                   description: Status of the alarm for the device. 1 indicates active and 0 indicates inactive alarm
+ *                 refillAlarmStatus:
+ *                   type: number
+ *                   description: Status of the refill alarm for the device. 1 indicates active and 0 indicates inactive alarm
  *       404:
  *         description: Device not found
  *         content:
@@ -306,36 +339,42 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
  */
 wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
   const { imei } = req.query;
-  const { status, data } = await wisePillClient.get(
-    `devices/getDevices.php?device_imei=${imei}`
-  );
+  const { status, data } = await getDeviceDetailsFromWisepillAPI(`${imei}`);
   if (status === 200) {
-    const { Result, ResultCode, records } = data;
+    const { Result, ResultCode } = data;
     if (parseInt(ResultCode) >= 100) {
-      res.status(409).send({ message: Result, code: ResultCode });
+      return res.status(409).json({ message: Result, code: ResultCode });
     } else {
       const {
+        alarm,
         alarm_time,
+        refill_alarm,
         refill_alarm_datetime,
         last_battery_level,
         last_opened,
         alarm_days,
         last_seen,
         device_status,
-      } = head(records) as any;
+        episode_start_date,
+        total_device_dose_days,
+      } = data;
       const deviceObject: DeviceDetails = {
         alarmDays: alarm_days ? decimalToBinary(alarm_days) : "",
         alarmTime: alarm_time ?? "",
+        alarmStatus: alarm ?? 0,
         refillAlarm: refill_alarm_datetime ?? "",
-        batteryLevel: parseInt(`${last_battery_level}`) / 100,
+        refillAlarmStatus: refill_alarm ?? 0,
+        batteryLevel: getDeviceBatteryLevel(last_battery_level),
         lastOpened: last_opened ?? "",
         lastHeartBeat: last_seen ?? "",
+        enrollmentDate: episode_start_date ?? "",
+        deviceOpenings: parseInt(total_device_dose_days ?? "0"),
         deviceStatus: getDeviceStatus(device_status),
       };
-      res.status(status).send(deviceObject);
+      return res.status(status).json(deviceObject);
     }
   } else {
-    res.status(status).send(data);
+    return res.status(status).json(data);
   }
 });
 
@@ -374,7 +413,7 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
  *                   description: Success message
  *                 status:
  *                   type: number
- *                   description: HTTP ststus code
+ *                   description: HTTP status code
  *       409:
  *         description: Encountered conflicts on assigning device. A descriptive message of reason will be sent in the response body.
  *         content:
@@ -397,6 +436,12 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
  *                   description: Error message
  */
 wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
+  // device status
+  const assignedDeviceStatus = 1;
+  const availableDeviceStatus = 2;
+  const damagedDeviceStatus = 3;
+  const unavailableDeviceStatus = 9;
+
   //validate schema
   const { error: bodyValidationError } = createEpisodeSchema.validate(req.body);
   if (bodyValidationError) {
@@ -404,63 +449,118 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
       error: bodyValidationError.details.map((error: any) => error.message),
     });
   }
-  const { imei, patientId } = req.body;
+  const { imei, patientId, force } = req.body;
+  let episodeId: string | null = null;
 
-  // Finding device
-  const assignedDeviceStatus = 1;
-  const findDeviceUrl = `devices/findDevice?input=${imei}`;
-  const { data } = await wisePillClient.get(findDeviceUrl);
-  const { ResultCode: devicesRequestStatus, records: deviceRecords }: any =
-    data;
+  try {
+    // check if device exists
+    const findDeviceUrl = `devices/findDevice?input=${imei}`;
+    const { data } = await wisePillClient.get(findDeviceUrl);
+    const { ResultCode: devicesRequestStatus, records: deviceRecords }: any =
+      data;
 
-  if (devicesRequestStatus == 0) {
-    // closing previous linked active episodes
-    logger.info(`Closing all episodes linked to ${imei}`);
-    await closePreviousLinkedEpisodes(imei);
+    if (devicesRequestStatus == 0) {
+      const { device_status } = first(deviceRecords as any[]);
+      const deviceStatus = parseInt(device_status);
 
-    const { device_status: deviceStatus } = first(deviceRecords as any[]);
-    if (deviceStatus == assignedDeviceStatus) {
-      // Unassign the assgined devices
-      logger.info(`Unassigning ${imei}`);
-      const unAssignUrl = `devices/unassignDevice?device_imei=${imei}`;
-      await wisePillClient.put(unAssignUrl);
-    }
-
-    // Creating Episode
-    const date = DateTime.now().toFormat("yyyy-MM-dd");
-    const createEpisodeUrl = `episodes/createEpisode?episode_start_date=${date}&external_id=${patientId}`;
-    const { data } = await wisePillClient.post(createEpisodeUrl);
-    const {
-      ResultCode: creatEpisodeResultCode,
-      Result: message,
-      episode_id: episodeId,
-    }: any = data;
-
-    if (creatEpisodeResultCode == 0 && episodeId) {
-      // Assigning episode to device
-      const assignDeviceUrl = `devices/assignDevice?episode_id=${episodeId}&device_imei=${imei}`;
-      const { data } = await wisePillClient.put(assignDeviceUrl);
+      // get patient details from DHIS2
       const {
-        ResultCode: deviceAssignmentCode,
-        Result: deviceAssigmnetResult,
-      }: any = data;
-      if (deviceAssignmentCode == 0) {
-        res.status(201).send({
-          status: 201,
-          message: `Device ${imei} assigned to ${patientId}`,
+        program,
+        programStage,
+        trackedEntityInstance,
+        orgUnit,
+        episodeId: fetchedEpisodeId,
+      } = await getPatientDetailsFromDHIS2(patientId);
+
+      episodeId = fetchedEpisodeId ?? null;
+      const episodeIdAlreadyExisted = episodeId ? true : false;
+
+      if (!trackedEntityInstance) {
+        return res
+          .status(404)
+          .json({ message: `Patient ${patientId} not found` });
+      }
+      // Assigning device to episode
+      if (deviceStatus === availableDeviceStatus) {
+        if (!episodeId) {
+          // Creating episode if there are no episodes related to the patient
+          episodeId = await createDeviceWisepillEpisodes(patientId);
+
+          if (!episodeId) {
+            return res.status(409).json({
+              message: `Could not generate episode for device ${imei}`,
+            });
+          }
+        }
+        if (episodeId) {
+          // Assigning episode to device
+          const { statusCode, body } = await assignEpisodeToDevice(
+            episodeId,
+            imei,
+            patientId,
+            trackedEntityInstance,
+            program,
+            programStage,
+            orgUnit,
+            episodeIdAlreadyExisted
+          );
+
+          return res.status(statusCode).json(body);
+        }
+      } else if (deviceStatus == assignedDeviceStatus) {
+        if (!force) {
+          return res.status(409).json({
+            message: `Device ${imei} is already assigned to another client. Verify the device IMEI number or contact your system administrator for follow up.`,
+            imei,
+            patientId,
+          });
+        }
+        await unassignPreviousLinkedEpisodes(imei);
+        if (!episodeId) {
+          // Creating episode if there are no episodes related to the patient
+          episodeId = await createDeviceWisepillEpisodes(patientId);
+          if (!episodeId) {
+            return res.status(409).json({
+              message: `Could not generate episode for device ${imei}`,
+            });
+          }
+        }
+        if (episodeId) {
+          const { statusCode, body } = await assignEpisodeToDevice(
+            episodeId,
+            imei,
+            patientId,
+            trackedEntityInstance,
+            program,
+            programStage,
+            orgUnit,
+            episodeIdAlreadyExisted
+          );
+
+          return res.status(statusCode).json(body);
+        } else {
+          return res.status(404).json({
+            message: `Episodes assigned to device ${imei} could not be found`,
+          });
+        }
+      } else if (deviceStatus === damagedDeviceStatus) {
+        return res.status(409).json({
+          message: `Device ${imei} is marked as damaged. Contact your system administrator for follow up.`,
         });
-      } else {
-        res.status(409).send({ message: deviceAssigmnetResult });
+      } else if (deviceStatus === unavailableDeviceStatus) {
+        return res.status(409).json({
+          message: `Device ${imei} is unavailable. Contact your system administrator for follow up.`,
+        });
       }
     } else {
-      res.status(409).send({
-        message:
-          creatEpisodeResultCode == 1
-            ? `Episode already exist for ${imei}`
-            : message ?? `Failed to create Episode for ${imei}`,
-      });
+      return res.status(404).json({ message: `Device ${imei} not found` });
     }
-  } else {
-    res.status(404).send({ message: `Device ${imei} not found` });
+
+    return;
+  } catch (error: any) {
+    logger.error(error.toString());
+    return res
+      .status(500)
+      .json({ message: "Internal server error", errorTrace: error.toString() });
   }
 });
