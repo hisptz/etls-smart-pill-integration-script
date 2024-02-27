@@ -23,7 +23,7 @@ const swaggerOptions = {
         "API documentation for the Integration API server for Wisepill and DHIS2. This API exposes the required API by the DHIS2 app that manages the integration from the wisepill API specifications",
     },
   },
-  apis: ["./**/*.routes.ts"],
+  apis: ["./**/*.routes.ts", "./**/*.routes.js"],
 };
 
 const swaggerSpecs = swaggerJsdoc(swaggerOptions);
