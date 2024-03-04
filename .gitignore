@@ -1,5 +1,14 @@
+# package files
 /node_modules/
+
+# environment files
 .env
+
+# build files
 /logs/
 /app/
 /build/
+
+# test folders
+coverage
+jest.config.js

@@ -1,17 +1,12 @@
 import { Command } from "commander";
 import { config } from "dotenv";
-import express, { Express } from "express";
-import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
-import cors from "cors";
-import helmet from "helmet";
 
 import logger from "../logging";
 import { Duration } from "../types";
-import { authenticate } from "../services";
 import { startIntegrationProcess } from "../services";
-import { wisePillRouter } from "../routes/wise-pill-api.routes";
+import intergrationAPI from "../routes";
 
 const swaggerOptions = {
   definition: {
@@ -28,15 +23,6 @@ const swaggerOptions = {
 
 const swaggerSpecs = swaggerJsdoc(swaggerOptions);
 
-const apiServerRateLimiter = rateLimit({
-  windowMs: 30 * 1000,
-  limit: 100,
-  message: {
-    status: "429",
-    message: "You have made too many requests, please try again later.",
-  },
-});
-
 config();
 const program = new Command();
 
@@ -45,11 +31,11 @@ program
   .description("")
   .option(
     "-s --startDate <startDate>",
-    "Start date for script coverage in YYYY-MM-DD"
+    "Start date for script coverage in YYYY-MM-DD",
   )
   .option(
     "-e --endDate <endDate>",
-    "End date for script coverage in YYYY-MM-DD"
+    "End date for script coverage in YYYY-MM-DD",
   )
   .action(async ({ startDate, endDate }: Duration) => {
     try {
@@ -63,29 +49,16 @@ program
   .command("start-api-server")
   .description("Initialization of the server for Wisepill integration")
   .action(() => {
-    const app: Express = express();
-    app.use(cors());
-    app.use(
-      helmet.contentSecurityPolicy({
-        useDefaults: true,
-      })
-    );
-    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
     const port = process.env.PORT ?? 3000;
     try {
-      app.use(express.json());
-      app.use(express.urlencoded({ extended: true }));
-      app.use(apiServerRateLimiter);
-
-      if (process.env.SECRET_KEY) {
-        app.use(authenticate);
-      }
-
-      app.use("/api", wisePillRouter);
-
-      app.listen(port, () => {
+      intergrationAPI.use(
+        "/api-docs",
+        swaggerUi.serve,
+        swaggerUi.setup(swaggerSpecs),
+      );
+      intergrationAPI.listen(port, () => {
         logger.info(
-          `⚡️[server]: Server is running at http://localhost:${port}`
+          `⚡️[server]: Server is running at http://localhost:${port}`,
         );
       });
     } catch (error: any) {
