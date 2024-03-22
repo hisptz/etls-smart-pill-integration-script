@@ -10,5 +10,7 @@
 /build/
 
 # test folders
-coverage
+/coverage/
+
+# jest config
 jest.config.js

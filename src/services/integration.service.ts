@@ -284,45 +284,67 @@ function generateEventPayload(
         deviceStatus,
         imei,
       } = teiEpisode;
-      const adherence = (adherenceString ?? "").split(",");
+      const adherences = (adherenceString ?? "").split(",");
       // if not range is specified
       if (!startDate && !endDate && lastSeen) {
         const lastSeenDate = DateTime.fromSQL(lastSeen);
         const now = DateTime.now();
         // if the last seen for the episode is the current day
-        if ((now.diff(lastSeenDate, ["days"]).toObject().days ?? 0) < 1) {
-          const episodeAdherence: AdherenceMapping = {
-            adherence: last(adherence) ?? "0",
-            date: lastSeen,
-          };
-          const dataValues = generateDataValuesFromAdherenceMapping(
-            episodeAdherence,
+        if ((now.diff(lastSeenDate, ["days"]).toObject().days ?? 0) >= 1) {
+          logger.warn(
+            `Device with IMEI ${imei} has not been communicating data since ${lastSeen}`,
+          );
+        }
+        const episodeAdherences: Array<AdherenceMapping> = [];
+        let daysFromEpisodeStart = 0;
+        for (const sanitizedAdherence of adherences) {
+          episodeAdherences.push({
+            adherence: sanitizedAdherence,
+            date: DateTime.fromSQL(episodeStartDate)
+              .minus(daysFromEpisodeStart)
+              .toFormat("yyyy-MM-dd"),
+          });
+          daysFromEpisodeStart++;
+        }
+
+        const adherenceEvents: Array<{
+          eventDate: string;
+          adherence: string;
+          dataValues: Array<DHIS2DataValue>;
+        }> = map(episodeAdherences, ({ adherence, date }) => ({
+          adherence,
+          eventDate: date,
+          dataValues: generateDataValuesFromAdherenceMapping(
+            { adherence, date },
             batteryLevel,
             deviceStatus,
-          );
-          const teiEvent: DHIS2Event = getDHIS2EventPayload(
+          ),
+        })).reverse();
+
+        for (const { eventDate, adherence, dataValues } of adherenceEvents) {
+          if (adherence === "0") {
+            break;
+          }
+          const teiEvent = getDHIS2EventPayload(
             program,
             programStage,
             trackedEntityInstance,
             orgUnit,
-            lastSeen,
+            eventDate,
             events,
             dataValues,
           );
-
-          eventPayloads.push(teiEvent);
-        } else {
-          logger.warn(
-            `Episode for ${imei} can not be saved to DHIS2 on ${now}, since the device was last seen at ${lastSeen}`,
-          );
+          if (teiEvent) {
+            eventPayloads.push(teiEvent);
+          }
         }
-      } else {
-        // if there is some range specified
-        const episodeAdherence = getSanitizedAdherence(
-          adherence,
+      }
+      // if there is some range specified
+      else if (startDate || endDate) {
+        const episodeAdherences = getSanitizedAdherence(
+          adherences,
           episodeStartDate,
         );
-
         // evaluation of the range for running the script
         const evaluationStartDate = startDate
           ? DateTime.fromISO(startDate)
@@ -331,9 +353,8 @@ function generateEventPayload(
           ? DateTime.fromISO(endDate)
           : DateTime.now();
 
-        for (const { adherence, date } of episodeAdherence) {
+        for (const { adherence, date } of episodeAdherences) {
           const adherenceDate = DateTime.fromISO(date);
-
           // If the adherence date is within the range for running the script
           if (
             evaluationStartDate <= adherenceDate &&
@@ -352,7 +373,9 @@ function generateEventPayload(
               events,
               dataValues,
             );
-            eventPayloads.push(adherenceEvent);
+            if (adherenceEvent) {
+              eventPayloads.push(adherenceEvent);
+            }
           }
         }
       }
@@ -374,7 +397,7 @@ function getDHIS2EventPayload(
   eventDate: string,
   events: any[],
   dataValues: DHIS2DataValue[],
-): DHIS2Event {
+): DHIS2Event | null {
   const sanitizedEventDate = DateTime.fromISO(
     sanitizeDatesIntoDateTime(eventDate),
   ).toFormat("yyyy-MM-dd");
