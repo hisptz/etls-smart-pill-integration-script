@@ -6,7 +6,7 @@ import {
   Episode,
 } from "../types";
 import { DateTime } from "luxon";
-import { map, head, chunk, find, forEach, filter, last, values } from "lodash";
+import { map, head, chunk, find, forEach, filter, values } from "lodash";
 import logger from "../logging";
 import {
   getAssignedDevices,
@@ -249,7 +249,7 @@ function generateEventPayload(
 
   const eventPayloads: DHIS2Event[] = [];
   const { startDate, endDate } = duration;
-  const defaultStartDate = "1970-01-01";
+  const defaultStartDate = "2000-01-01";
 
   for (const {
     imei,
@@ -417,16 +417,35 @@ function getDHIS2EventPayload(
 
   let mergedDataValues: DHIS2DataValue[] = dataValues;
   if (existingEvent) {
-    mergedDataValues = [
-      ...filter(
-        dataValues,
-        ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT,
-      ),
-      ...filter(
-        existingEvent["dataValues"] ?? [],
-        ({ dataElement }) => dataElement !== DEVICE_SIGNAL_DATA_ELEMENT,
-      ),
-    ];
+    const currentDeviceSignalDataValue = find(
+      dataValues,
+      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT,
+    );
+
+    const previousDeviceSignalDataValue = find(
+      existingEvent["dataValues"] ?? [],
+      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT,
+    );
+
+    // check if the adherence have changed
+    if (
+      currentDeviceSignalDataValue?.value !==
+      previousDeviceSignalDataValue?.value
+    ) {
+      mergedDataValues = [
+        ...filter(
+          dataValues,
+          ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT,
+        ),
+        ...filter(
+          existingEvent["dataValues"] ?? [],
+          ({ dataElement }) => dataElement !== DEVICE_SIGNAL_DATA_ELEMENT,
+        ),
+      ];
+    } else {
+      // No signal has changed, return nothing
+      return null;
+    }
   }
 
   return {
