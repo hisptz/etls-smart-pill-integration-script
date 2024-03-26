@@ -230,58 +230,75 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   program: string,
   values: string[],
   attribute: string,
-  loggerStatus = false
+  programStage?: string
 ): Promise<Array<{ [key: string]: any }>> {
   logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
-  const sanitizedTrackedEntityInstances: { [key: string]: string }[] = [];
-  const pageSize = 100;
+  const sanitizedTrackedEntityInstances: { [key: string]: string | any[] }[] =
+    [];
 
+  const pageSize = 50;
   const chunkedValues = chunk(values, pageSize);
 
   let page = 1;
   for (const valueGroup of chunkedValues) {
     try {
-      const url = `trackedEntityInstances.json?fields=attributes,orgUnit,trackedEntityInstance&ouMode=ALL&filter=${attribute}:in:${valueGroup.join(
+      const url = `tracker/trackedEntities.json?fields=attributes[attribute,value],orgUnit,trackedEntity,enrollments[program,events[event,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
         ";"
-      )}&program=${program}&paging=false`;
+      )}`;
       const { data, status } = await dhis2Client.get(url);
       if (status === 200) {
-        const { trackedEntityInstances } = data;
+        const { instances: trackedEntityInstances } = data;
         forEach(
           trackedEntityInstances,
-          ({ attributes, trackedEntityInstance, orgUnit }) => {
+          ({ attributes, trackedEntity, orgUnit, enrollments }) => {
             const { value: imei } = find(
               attributes,
               ({ attribute: attributeId }) => attribute === attributeId
             );
+
+            const enrollment = programStage
+              ? head(
+                  filter(
+                    enrollments,
+                    ({ program: enrolledProgram }) =>
+                      enrolledProgram === program
+                  )
+                )
+              : null;
+
+            const events = filter(
+              enrollment?.events ?? [],
+              ({ programStage: eventProgramStage }) =>
+                eventProgramStage === programStage
+            );
             sanitizedTrackedEntityInstances.push({
               imei,
-              trackedEntityInstance,
+              trackedEntity,
               orgUnit,
               attributes,
+              ...(programStage && { events }),
             });
           }
         );
-        if (loggerStatus) {
+        if (programStage) {
           logger.info(
             `Fetched tracked entity instances from ${program} program: ${page}/${chunkedValues.length}`
           );
         }
       } else {
-        if (loggerStatus) {
+        if (programStage) {
           logger.warn(
             `Failed to fetch tracked entity instances for ${page} page`
           );
         }
       }
     } catch (error: any) {
-      if (loggerStatus) {
+      if (programStage) {
         logger.warn(
           `Failed to fetch tracked entity instances from ${program}. Check the error below!`
         );
         logger.error(error.toString());
       }
-
       logSanitizedConflictsImportSummary(error);
     }
     page++;
