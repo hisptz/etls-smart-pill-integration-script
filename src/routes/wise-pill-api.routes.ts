@@ -467,7 +467,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
       const {
         program,
         programStage,
-        trackedEntityInstance,
+        trackedEntity,
+        enrollment,
         orgUnit,
         episodeId: fetchedEpisodeId,
       } = await getPatientDetailsFromDHIS2(patientId);
@@ -475,7 +476,7 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
       episodeId = fetchedEpisodeId ?? null;
       const episodeIdAlreadyExisted = episodeId ? true : false;
 
-      if (!trackedEntityInstance) {
+      if (!trackedEntity) {
         return res
           .status(404)
           .json({ message: `Patient ${patientId} not found` });
@@ -498,8 +499,9 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             episodeId,
             imei,
             patientId,
-            trackedEntityInstance,
+            trackedEntity,
             program,
+            enrollment,
             programStage,
             orgUnit,
             episodeIdAlreadyExisted
@@ -530,8 +532,9 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             episodeId,
             imei,
             patientId,
-            trackedEntityInstance,
+            trackedEntity,
             program,
+            enrollment,
             programStage,
             orgUnit,
             episodeIdAlreadyExisted

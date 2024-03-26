@@ -180,8 +180,9 @@ export async function assignEpisodeToDevice(
   episodeId: string,
   deviceImei: string,
   patientId: string,
-  trackedEntityInstance: string,
+  trackedEntity: string,
   program: string,
+  enrollment: string,
   programStage: string,
   orgUnit: string,
   clearEpisodeLinkages: boolean = false
@@ -209,8 +210,9 @@ export async function assignEpisodeToDevice(
     // creating an enrollment signal in DHIS2
     await updateDATEnrollmentStatus(
       patientId,
-      trackedEntityInstance,
+      trackedEntity,
       program,
+      enrollment,
       programStage,
       orgUnit
     );

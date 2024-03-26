@@ -179,8 +179,9 @@ export async function getPatientDetailsFromDHIS2(
 
 export async function updateDATEnrollmentStatus(
   patientNumber: string,
-  trackedEntityInstance: string,
+  trackedEntity: string,
   program: string,
+  enrollment: string,
   programStage: string,
   orgUnit: string
 ): Promise<void> {
@@ -188,13 +189,14 @@ export async function updateDATEnrollmentStatus(
     const now = DateTime.now().toISO();
     const eventDate = DateTime.now().toFormat("yyyy-MM-dd");
 
-    const event = {
+    const event: DHIS2Event = {
       event: uid(),
       program,
+      enrollment,
       programStage,
       orgUnit,
-      trackedEntityInstance,
-      eventDate,
+      trackedEntity,
+      occurredAt: eventDate,
       status: "ACTIVE",
       dataValues: [
         {
@@ -208,31 +210,10 @@ export async function updateDATEnrollmentStatus(
       ],
     };
 
-    const url = `events?strategy=CREATE_AND_UPDATE`;
-    const { status, data } = await dhis2Client.post(url, {
-      events: [event],
-    });
-
-    if (status === 200) {
-      const { response: importResponse } = data;
-      const { imported } = importResponse;
-      if (imported) {
-        logger.info(
-          `Successfully updated the DAT enrollment status for patient with ${patientNumber} identification`
-        );
-      } else {
-        logger.warn(
-          `Failed to update the DAT enrollment status for patient with ${patientNumber} identification number`
-        );
-        logImportSummary(importResponse);
-      }
-    } else {
-      logger.warn(
-        `There are errors in saving the DAT enrollment status for patient with ${patientNumber} identification number`
-      );
-      const { response: importResponse } = data;
-      logImportSummary(importResponse);
-    }
+    logger.info(
+      `Updating DAT enrollment status for patient with ${patientNumber} identification`
+    );
+    await uploadDhis2Events([event]);
   } catch (error: any) {
     logger.warn(
       `Failed to assign the DAT enrollment status for patient with ${patientNumber} identification number`
@@ -358,7 +339,6 @@ export async function uploadDhis2Events(
       );
       logSanitizedConflictsImportSummary(error);
     }
-
     page++;
   }
 }
