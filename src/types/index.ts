@@ -22,6 +22,7 @@ export type DHIS2Event = {
   event: string;
   trackedEntity: string;
   program: string;
+  enrollment: string;
   programStage: string;
   orgUnit: string;
   occurredAt: string;

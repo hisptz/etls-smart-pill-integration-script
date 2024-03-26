@@ -6,7 +6,7 @@ import {
   Episode,
 } from "../types";
 import { DateTime } from "luxon";
-import { map, head, chunk, find, forEach, filter, values } from "lodash";
+import { map, head, find, forEach, filter, values } from "lodash";
 import logger from "../logging";
 import {
   getAssignedDevices,
@@ -22,7 +22,6 @@ import {
   getSanitizedAdherence,
   sanitizeDatesIntoDateTime,
 } from "../helpers/wise-pill-api.helpers";
-import dhis2Client from "../clients/dhis2";
 import { uid } from "@hisptz/dhis2-utils";
 import { DEVICE_SIGNAL_DATA_ELEMENT } from "../constants";
 
@@ -92,8 +91,7 @@ export async function startIntegrationProcess({
         logger.info(
           `Uploading ${eventPayloads.length} events for program stage ${programStage}`
         );
-        console.log(JSON.stringify({ eventPayloads }));
-        // await uploadDhis2Events(eventPayloads);
+        await uploadDhis2Events(eventPayloads);
       } else {
         logger.info(
           `Skipping uploading events from program stage ${programStage} since there are no events`
@@ -160,6 +158,7 @@ function generateEventPayload(
   for (const {
     imei,
     trackedEntity,
+    enrollment,
     orgUnit,
     events,
   } of trackedEntityInstances) {
@@ -235,6 +234,7 @@ function generateEventPayload(
             program,
             programStage,
             trackedEntity,
+            enrollment,
             orgUnit,
             eventDate,
             events,
@@ -274,6 +274,7 @@ function generateEventPayload(
               program,
               programStage,
               trackedEntity,
+              enrollment,
               orgUnit,
               date,
               events,
@@ -299,6 +300,7 @@ function getDHIS2EventPayload(
   program: string,
   programStage: string,
   trackedEntity: string,
+  enrollment: string,
   orgUnit: string,
   eventDate: string,
   events: any[],
@@ -358,6 +360,7 @@ function getDHIS2EventPayload(
     event: eventId,
     dataValues: mergedDataValues,
     trackedEntity,
+    enrollment,
     orgUnit,
     program,
     programStage,

@@ -19,6 +19,7 @@ import dhis2Client from "../clients/dhis2";
 import logger from "../logging";
 import { DateTime } from "luxon";
 import { uid } from "@hisptz/dhis2-utils";
+import { DHIS2Event } from "../types";
 
 async function getDataStoreSettings(): Promise<any> {
   const url = `dataStore/${WEB_APP_DATASTORE_KEY}/settings`;
@@ -49,40 +50,32 @@ export async function getProgramMapping(): Promise<any[]> {
   return programMapping ?? [];
 }
 
-export function logImportSummary(response: any) {
-  const { imported, updated, deleted, ignored, importSummaries } = response;
-  if (imported || updated || deleted || ignored) {
+export function logImportSummary(importResponse: any) {
+  const { stats, validationReport } = importResponse;
+
+  const { created, updated, deleted, ignored, total } = stats ?? {};
+  if (created || updated || deleted || ignored) {
     logger.info(
       `Here is the import summary: ${JSON.stringify({
-        imported,
+        created,
         deleted,
         updated,
         ignored,
+        total,
       })}`
     );
   }
 
-  if (ignored) {
-    const latestImportSummary: any = find(
-      importSummaries,
-      ({ importCount }) => importCount.ignored
-    );
-    if (latestImportSummary) {
-      const { description, conflicts } = latestImportSummary;
-      if (description) {
-        logger.error(description);
-      } else if (conflicts) {
-        const { object, value: message } = (head(conflicts) ?? {}) as Record<
-          string,
-          string
-        >;
-        logger.error(
-          object && message
-            ? `Conflicts at ${object} object: ${message}`
-            : `Failed to evaluate import summary conflicts`
-        );
-      }
-    }
+  const { warningReports, errorReports } = validationReport ?? {};
+  if (warningReports && warningReports.length) {
+    forEach(warningReports, ({ message }) => {
+      logger.warn(message);
+    });
+  }
+  if (errorReports && errorReports.length) {
+    forEach(errorReports, ({ message }) => {
+      logger.error(message);
+    });
   }
 }
 
@@ -92,6 +85,22 @@ export function logSanitizedConflictsImportSummary(errorResponse: any): void {
     if (response) {
       logImportSummary(response);
     } else {
+      const { message, response } = errorResponse;
+
+      if (!response) {
+        logger.error(message);
+      } else {
+        const { status, validationReport } = response.data;
+        const sanitizedMessage = (head(validationReport.errorReports) as any)
+          ?.message;
+        if (sanitizedMessage) {
+          logger.error(sanitizedMessage);
+        } else {
+          logger.error(
+            `Failed to fetch the validation report for the error with status code ${status}`
+          );
+        }
+      }
       logger.error(errorResponse.response);
     }
   } else {
@@ -132,7 +141,12 @@ export async function getPatientDetailsFromDHIS2(
                   return null;
                 }
 
-                const { attributes, trackedEntityInstance, orgUnit } = tei;
+                const {
+                  attributes,
+                  trackedEntityInstance,
+                  orgUnit,
+                  enrollment,
+                } = tei;
                 const episodeId = find(
                   attributes,
                   ({ attribute }) => attribute === episodeIdAttribute
@@ -141,6 +155,7 @@ export async function getPatientDetailsFromDHIS2(
                 return {
                   program,
                   programStage,
+                  enrollment,
                   trackedEntityInstance,
                   orgUnit,
                   patientId,
@@ -242,7 +257,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   let page = 1;
   for (const valueGroup of chunkedValues) {
     try {
-      const url = `tracker/trackedEntities.json?fields=attributes[attribute,value],orgUnit,trackedEntity,enrollments[program,events[event,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
+      const url = `tracker/trackedEntities.json?fields=attributes[attribute,value],orgUnit,trackedEntity,enrollments[program,enrollment,events[event,enrollment,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
         ";"
       )}`;
       const { data, status } = await dhis2Client.get(url);
@@ -256,7 +271,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
               ({ attribute: attributeId }) => attribute === attributeId
             );
 
-            const enrollment = programStage
+            const { enrollment, events: teiEvents } = programStage
               ? head(
                   filter(
                     enrollments,
@@ -267,13 +282,14 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
               : null;
 
             const events = filter(
-              enrollment?.events ?? [],
+              teiEvents ?? [],
               ({ programStage: eventProgramStage }) =>
                 eventProgramStage === programStage
             );
             sanitizedTrackedEntityInstances.push({
               imei,
               trackedEntity,
+              enrollment,
               orgUnit,
               attributes,
               ...(programStage && { events }),
@@ -304,4 +320,45 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
     page++;
   }
   return sanitizedTrackedEntityInstances;
+}
+
+export async function uploadDhis2Events(
+  eventPayloads: DHIS2Event[]
+): Promise<void> {
+  const paginationSize = 100;
+  logger.info(`Evaluating pagination by ${[paginationSize]} page size`);
+  const chunkedEvents = chunk(eventPayloads, paginationSize);
+  let page = 1;
+
+  for (const events of chunkedEvents) {
+    logger.info(
+      `Uploading adherence events to DHIS2: ${page}/${chunkedEvents.length}`
+    );
+
+    try {
+      const url = `tracker?strategy=CREATE_AND_UPDATE&async=false&atomicMode=OBJECT`;
+      const { status, data } = await dhis2Client.post(url, {
+        events,
+      });
+
+      if (status === 200) {
+        logger.info(
+          `Successfully saved adherence events ${page}/${chunkedEvents.length}`
+        );
+        logImportSummary(data);
+      } else {
+        logger.warn(
+          `There are errors in saving the the adherence events at page ${page}`
+        );
+        logImportSummary(data);
+      }
+    } catch (error: any) {
+      logger.warn(
+        `Failed to save the adherence events at page ${page}. Check the error below`
+      );
+      logSanitizedConflictsImportSummary(error);
+    }
+
+    page++;
+  }
 }
