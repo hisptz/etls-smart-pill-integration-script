@@ -1,4 +1,4 @@
-import { map, chunk, find, head } from "lodash";
+import { map, chunk, find } from "lodash";
 import { AdherenceMapping, DHIS2DataValue, Device, Episode } from "../types";
 import {
   BATTERY_HEALTH_DATA_ELEMENT,
@@ -135,8 +135,12 @@ export function sanitizeDeviceList(
   );
 }
 
-export function sanitizeDatesIntoDateTime(date: string): string {
+export function sanitizeWisePillDateToDateTimeObjects(date: string): string {
   return date.replace(/ /g, "T");
+}
+
+export function sanitizeDateFromServer(date: string): string {
+  return DateTime.fromSQL(date).toISO() ?? "";
 }
 
 export function generateDataValuesFromAdherenceMapping(
@@ -147,7 +151,7 @@ export function generateDataValuesFromAdherenceMapping(
   const dataValues: Array<DHIS2DataValue> = [
     {
       dataElement: DOSAGE_TIME_DATA_ELEMENT,
-      value: sanitizeDatesIntoDateTime(date),
+      value: sanitizeDateFromServer(date),
     },
     {
       dataElement: DEVICE_SIGNAL_DATA_ELEMENT,

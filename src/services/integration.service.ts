@@ -12,18 +12,19 @@ import {
   getAssignedDevices,
   getDhis2TrackedEntityInstancesByAttribute,
   getProgramMapping,
-  logImportSummary,
-  logSanitizedConflictsImportSummary,
   uploadDhis2Events,
 } from "../helpers/dhis2-api.helpers";
 import {
   generateDataValuesFromAdherenceMapping,
   getWisepillEpisodeValues,
   getSanitizedAdherence,
-  sanitizeDatesIntoDateTime,
+  sanitizeWisePillDateToDateTimeObjects,
 } from "../helpers/wise-pill-api.helpers";
 import { uid } from "@hisptz/dhis2-utils";
-import { DEVICE_SIGNAL_DATA_ELEMENT } from "../constants";
+import {
+  DEVICE_SIGNAL_DATA_ELEMENT,
+  DOSAGE_TIME_DATA_ELEMENT,
+} from "../constants";
 
 export async function startIntegrationProcess({
   startDate,
@@ -200,11 +201,15 @@ function generateEventPayload(
         }
         const episodeAdherences: Array<AdherenceMapping> = [];
         var daysFromEpisodeStart = 0;
+        var episodeCount = 0;
         for (const sanitizedAdherence of adherences) {
-          const episodeDate = DateTime.fromSQL(episodeStartDate)
-            .plus({ days: daysFromEpisodeStart })
-            .toFormat("yyyy-MM-dd");
-
+          episodeCount++;
+          const episodeDate =
+            episodeCount === adherences.length
+              ? DateTime.fromSQL(lastSeen).toISO() ?? ""
+              : DateTime.fromSQL(episodeStartDate)
+                  .plus({ days: daysFromEpisodeStart })
+                  .toFormat("yyyy-MM-dd");
           episodeAdherences.push({
             adherence: sanitizedAdherence,
             date: episodeDate,
@@ -307,7 +312,7 @@ function getDHIS2EventPayload(
   dataValues: DHIS2DataValue[]
 ): DHIS2Event | null {
   const sanitizedEventDate = DateTime.fromISO(
-    sanitizeDatesIntoDateTime(eventDate)
+    sanitizeWisePillDateToDateTimeObjects(eventDate)
   ).toFormat("yyyy-MM-dd");
   const existingEvent: any =
     events && events.length
@@ -341,13 +346,17 @@ function getDHIS2EventPayload(
       previousDeviceSignalDataValue?.value
     ) {
       mergedDataValues = [
-        ...filter(
-          dataValues,
-          ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT
+        ...filter(dataValues, ({ dataElement }) =>
+          [DEVICE_SIGNAL_DATA_ELEMENT, DOSAGE_TIME_DATA_ELEMENT].includes(
+            dataElement
+          )
         ),
         ...filter(
           existingEvent["dataValues"] ?? [],
-          ({ dataElement }) => dataElement !== DEVICE_SIGNAL_DATA_ELEMENT
+          ({ dataElement }) =>
+            ![DEVICE_SIGNAL_DATA_ELEMENT, DOSAGE_TIME_DATA_ELEMENT].includes(
+              dataElement
+            )
         ),
       ];
     } else {
