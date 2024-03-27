@@ -1,7 +1,7 @@
 {
   "name": "etls-smart-pill-integration-script",
   "description": "A node script for integration between DHIS2 and WisePill API",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
