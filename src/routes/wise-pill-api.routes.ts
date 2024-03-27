@@ -189,10 +189,10 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
  *                       lastHeartBeat:
  *                         type: string
  *                         description: Time for the last heart beat received by the
- *                       email:
+ *                       lastOpened:
  *                         type: string
- *                         format: email
- *                         description: User's email address
+ *                         description: Time when the device was last opened
+ *
  *     500:
  *       description: Server Error
  */
@@ -326,6 +326,12 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
  *                 refillAlarmStatus:
  *                   type: number
  *                   description: Status of the refill alarm for the device. 1 indicates active and 0 indicates inactive alarm
+ *                enrollmentDate:
+ *                  type: string
+ *                 description: The date when the device was enrolled
+ *               deviceOpenings:
+ *                type: number
+ *               description: The total number of times the device has been opened
  *       404:
  *         description: Device not found
  *         content:
@@ -397,6 +403,9 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
  *               patientId:
  *                 type: string
  *                 description: This is the unique identifier for a patient from the DHIS2 instance
+ *               force:
+ *                 type: boolean
+ *                 description: This state wether or not to force the assignment of the device to the patient. If set to true, the device will be unassigned from the previous patient and assigned to the new patient  (optional)
  *             required:
  *               - imei
  *               - patientId
@@ -411,6 +420,9 @@ wisePillRouter.get("/devices/details", async (req: Request, res: Response) => {
  *                 message:
  *                   type: string
  *                   description: Success message
+ *                 episode:
+ *                   type: string
+ *                   description: Episode id from the wisepill API
  *                 status:
  *                   type: number
  *                   description: HTTP status code
