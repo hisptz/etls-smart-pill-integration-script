@@ -70,15 +70,15 @@ The script can be run using either `node` as shown below:
 - Starting the API server: The API server can be started using the command
 
 ```
-node index.js start-api-server
+node src/index.js start-api-server
 ```
 
 - Running migration: To run migration, there are two options, running daily or running in a specific range.
   - Running for the current day:
     ```
-    node index.js start-integration
+    node src/index.js start-integration
     ```
   - Running for a specified range (date format: YYYY-MM-DD):
     ```
-    node index.js start-integration --startDate 2023-01-01 --endDate 2023-06-30
+    node src/index.js start-integration --startDate 2023-01-01 --endDate 2023-06-30
     ```
