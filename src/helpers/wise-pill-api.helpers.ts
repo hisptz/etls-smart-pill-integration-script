@@ -140,7 +140,7 @@ export function sanitizeWisePillDateToDateTimeObjects(date: string): string {
 }
 
 export function sanitizeDateFromServer(date: string): string {
-  return DateTime.fromSQL(date).toISO() ?? "";
+  return DateTime.fromISO(date).toISO() ?? "";
 }
 
 export function generateDataValuesFromAdherenceMapping(
