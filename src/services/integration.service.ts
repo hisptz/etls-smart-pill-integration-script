@@ -342,12 +342,12 @@ function getDHIS2EventPayload(
 
     const currentDoseDateDataValue = find(
       dataValues,
-      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT
+      ({ dataElement }) => dataElement === DOSAGE_TIME_DATA_ELEMENT
     );
 
     const previousDoseDateDataValue = find(
       existingEvent["dataValues"] ?? [],
-      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT
+      ({ dataElement }) => dataElement === DOSAGE_TIME_DATA_ELEMENT
     );
 
     const doseDateTime = previousDoseDateDataValue?.value
@@ -360,18 +360,19 @@ function getDHIS2EventPayload(
     // check if the adherence have changed
     if (
       currentDeviceSignalDataValue?.value !==
-      previousDeviceSignalDataValue?.value
+        previousDeviceSignalDataValue?.value ||
+      doseDateTime !== previousDoseDateDataValue?.value
     ) {
       mergedDataValues = [
-        ...filter(dataValues, ({ dataElement }) =>
-          [DEVICE_SIGNAL_DATA_ELEMENT].includes(dataElement)
-        ),
         ...filter(
           existingEvent["dataValues"] ?? [],
           ({ dataElement }) =>
             ![DEVICE_SIGNAL_DATA_ELEMENT, DOSAGE_TIME_DATA_ELEMENT].includes(
               dataElement
             )
+        ),
+        ...filter(dataValues, ({ dataElement }) =>
+          [DEVICE_SIGNAL_DATA_ELEMENT].includes(dataElement)
         ),
         {
           dataElement: DOSAGE_TIME_DATA_ELEMENT,
