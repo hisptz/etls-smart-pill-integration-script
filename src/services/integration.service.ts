@@ -360,7 +360,8 @@ function getDHIS2EventPayload(
     // check if the adherence have changed
     if (
       currentDeviceSignalDataValue?.value !==
-      previousDeviceSignalDataValue?.value
+        previousDeviceSignalDataValue?.value ||
+      doseDateTime !== previousDoseDateDataValue?.value
     ) {
       mergedDataValues = [
         ...filter(
