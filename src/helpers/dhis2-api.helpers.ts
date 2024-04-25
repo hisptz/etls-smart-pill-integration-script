@@ -246,15 +246,16 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
               ({ attribute: attributeId }) => attribute === attributeId,
             );
 
-            const latestProgramEnrollment = programStage
-              ? head(
-                  filter(
-                    enrollments,
-                    ({ program: enrolledProgram }) =>
-                      enrolledProgram === program,
-                  ),
-                )
-              : {};
+            const latestProgramEnrollment =
+              program && program.length
+                ? head(
+                    filter(
+                      enrollments,
+                      ({ program: enrolledProgram }) =>
+                        enrolledProgram === program,
+                    ),
+                  )
+                : {};
 
             const { enrollment, events: teiEvents } = latestProgramEnrollment;
 
