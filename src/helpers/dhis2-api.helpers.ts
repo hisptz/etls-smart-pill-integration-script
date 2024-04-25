@@ -221,7 +221,12 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   attribute: string,
   programStage?: string,
 ): Promise<Array<{ [key: string]: any }>> {
-  logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
+  const showLogs = (programStage ?? "").length > 0;
+
+  showLogs &&
+    logger.info(
+      `Fetching DHIS2 tracked entity instances for ${program} program`,
+    );
   const sanitizedTrackedEntityInstances: { [key: string]: string | any[] }[] =
     [];
 
@@ -274,20 +279,18 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
             });
           },
         );
-        if (programStage) {
+        showLogs &&
           logger.info(
             `Fetched tracked entity instances from ${program} program: ${page}/${chunkedValues.length}`,
           );
-        }
       } else {
-        if (programStage) {
+        showLogs &&
           logger.warn(
             `Failed to fetch tracked entity instances for ${page} page`,
           );
-        }
       }
     } catch (error: any) {
-      if (programStage) {
+      if (showLogs) {
         logger.warn(
           `Failed to fetch tracked entity instances from ${program}. Check the error below!`,
         );
