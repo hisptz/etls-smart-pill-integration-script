@@ -28,7 +28,7 @@ async function getDataStoreSettings(): Promise<any> {
     return data;
   } catch (e: any) {
     logger.error(
-      "Failed to fetch data store configurations. Check the logs below!"
+      "Failed to fetch data store configurations. Check the logs below!",
     );
     logger.error(e.toString());
     return {};
@@ -40,7 +40,7 @@ export async function getAssignedDevices(): Promise<string[]> {
   return devices
     ? map(
         filter(devices, ({ inUse }) => inUse),
-        ({ code }) => code
+        ({ code }) => code,
       )
     : [];
 }
@@ -62,7 +62,7 @@ export function logImportSummary(importResponse: any) {
         updated,
         ignored,
         total,
-      })}`
+      })}`,
     );
   }
 
@@ -97,7 +97,7 @@ export function logSanitizedConflictsImportSummary(errorResponse: any): void {
           logger.error(sanitizedMessage);
         } else {
           logger.error(
-            `Failed to fetch the validation report for the error with status code ${status}`
+            `Failed to fetch the validation report for the error with status code ${status}`,
           );
         }
       }
@@ -109,7 +109,7 @@ export function logSanitizedConflictsImportSummary(errorResponse: any): void {
 }
 
 export async function getPatientDetailsFromDHIS2(
-  patientId: string
+  patientId: string,
 ): Promise<any | null> {
   try {
     const programMappings = await getProgramMapping();
@@ -129,48 +129,41 @@ export async function getPatientDetailsFromDHIS2(
                   mappedAttributes["patientNumber"];
                 const episodeIdAttribute = mappedAttributes["episodeId"];
 
-                const tei = head(
+                const trackedEntities =
                   await getDhis2TrackedEntityInstancesByAttribute(
                     program,
                     [patientId],
-                    patientNumberAttribute
-                  )
-                );
-
+                    patientNumberAttribute,
+                  );
+                const tei = head(trackedEntities);
                 if (!tei) {
                   return null;
                 }
-
-                const {
-                  attributes,
-                  trackedEntityInstance,
-                  orgUnit,
-                  enrollment,
-                } = tei;
+                const { attributes, trackedEntity, orgUnit, enrollment } = tei;
                 const episodeId = find(
                   attributes,
-                  ({ attribute }) => attribute === episodeIdAttribute
+                  ({ attribute }) => attribute === episodeIdAttribute,
                 )?.value;
 
                 return {
                   program,
-                  programStage,
-                  enrollment,
-                  trackedEntityInstance,
                   orgUnit,
                   patientId,
                   episodeId,
+                  programStage,
+                  enrollment,
+                  trackedEntity,
                 };
-              }
-            )
-          )
-        )
-      )
+              },
+            ),
+          ),
+        ),
+      ),
     ) as any | null;
     return trackedEntityInstance;
   } catch (error: any) {
     logger.warn(
-      `Failed to fetch patient details with ${patientId} identification number`
+      `Failed to fetch patient details with ${patientId} identification number`,
     );
     logger.error(error.toString());
     return null;
@@ -183,7 +176,7 @@ export async function updateDATEnrollmentStatus(
   program: string,
   enrollment: string,
   programStage: string,
-  orgUnit: string
+  orgUnit: string,
 ): Promise<void> {
   try {
     const now = DateTime.now().toISO();
@@ -211,12 +204,12 @@ export async function updateDATEnrollmentStatus(
     };
 
     logger.info(
-      `Updating DAT enrollment status for patient with ${patientNumber} identification`
+      `Updating DAT enrollment status for patient with ${patientNumber} identification`,
     );
     await uploadDhis2Events([event]);
   } catch (error: any) {
     logger.warn(
-      `Failed to assign the DAT enrollment status for patient with ${patientNumber} identification number`
+      `Failed to assign the DAT enrollment status for patient with ${patientNumber} identification number`,
     );
     logger.error(error.toString());
   }
@@ -226,9 +219,14 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   program: string,
   values: string[],
   attribute: string,
-  programStage?: string
+  programStage?: string,
 ): Promise<Array<{ [key: string]: any }>> {
-  logger.info(`Fetching DHIS2 tracked entity instances for ${program} program`);
+  const showLogs = (programStage ?? "").length > 0;
+
+  showLogs &&
+    logger.info(
+      `Fetching DHIS2 tracked entity instances for ${program} program`,
+    );
   const sanitizedTrackedEntityInstances: { [key: string]: string | any[] }[] =
     [];
 
@@ -239,8 +237,9 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   for (const valueGroup of chunkedValues) {
     try {
       const url = `tracker/trackedEntities.json?fields=attributes[attribute,value],orgUnit,trackedEntity,enrollments[program,enrollment,events[event,enrollment,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
-        ";"
+        ";",
       )}`;
+
       const { data, status } = await dhis2Client.get(url);
       if (status === 200) {
         const { instances: trackedEntityInstances } = data;
@@ -249,23 +248,26 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
           ({ attributes, trackedEntity, orgUnit, enrollments }) => {
             const { value: imei } = find(
               attributes,
-              ({ attribute: attributeId }) => attribute === attributeId
+              ({ attribute: attributeId }) => attribute === attributeId,
             );
 
-            const { enrollment, events: teiEvents } = programStage
-              ? head(
-                  filter(
-                    enrollments,
-                    ({ program: enrolledProgram }) =>
-                      enrolledProgram === program
+            const latestProgramEnrollment =
+              program && program.length
+                ? head(
+                    filter(
+                      enrollments,
+                      ({ program: enrolledProgram }) =>
+                        enrolledProgram === program,
+                    ),
                   )
-                )
-              : null;
+                : {};
+
+            const { enrollment, events: teiEvents } = latestProgramEnrollment;
 
             const events = filter(
               teiEvents ?? [],
               ({ programStage: eventProgramStage }) =>
-                eventProgramStage === programStage
+                eventProgramStage === programStage,
             );
             sanitizedTrackedEntityInstances.push({
               imei,
@@ -275,24 +277,22 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
               attributes,
               ...(programStage && { events }),
             });
-          }
+          },
         );
-        if (programStage) {
+        showLogs &&
           logger.info(
-            `Fetched tracked entity instances from ${program} program: ${page}/${chunkedValues.length}`
+            `Fetched tracked entity instances from ${program} program: ${page}/${chunkedValues.length}`,
           );
-        }
       } else {
-        if (programStage) {
+        showLogs &&
           logger.warn(
-            `Failed to fetch tracked entity instances for ${page} page`
+            `Failed to fetch tracked entity instances for ${page} page`,
           );
-        }
       }
     } catch (error: any) {
-      if (programStage) {
+      if (showLogs) {
         logger.warn(
-          `Failed to fetch tracked entity instances from ${program}. Check the error below!`
+          `Failed to fetch tracked entity instances from ${program}. Check the error below!`,
         );
         logger.error(error.toString());
       }
@@ -304,7 +304,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
 }
 
 export async function uploadDhis2Events(
-  eventPayloads: DHIS2Event[]
+  eventPayloads: DHIS2Event[],
 ): Promise<void> {
   const paginationSize = 100;
   logger.info(`Evaluating pagination by ${[paginationSize]} page size`);
@@ -313,7 +313,7 @@ export async function uploadDhis2Events(
 
   for (const events of chunkedEvents) {
     logger.info(
-      `Uploading adherence events to DHIS2: ${page}/${chunkedEvents.length}`
+      `Uploading adherence events to DHIS2: ${page}/${chunkedEvents.length}`,
     );
 
     try {
@@ -324,18 +324,18 @@ export async function uploadDhis2Events(
 
       if (status === 200) {
         logger.info(
-          `Successfully saved adherence events ${page}/${chunkedEvents.length}`
+          `Successfully saved adherence events ${page}/${chunkedEvents.length}`,
         );
         logImportSummary(data);
       } else {
         logger.warn(
-          `There are errors in saving the the adherence events at page ${page}`
+          `There are errors in saving the the adherence events at page ${page}`,
         );
         logImportSummary(data);
       }
     } catch (error: any) {
       logger.warn(
-        `Failed to save the adherence events at page ${page}. Check the error below`
+        `Failed to save the adherence events at page ${page}. Check the error below`,
       );
       logSanitizedConflictsImportSummary(error);
     }
