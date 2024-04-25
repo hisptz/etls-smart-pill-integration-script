@@ -125,7 +125,7 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
     const { data } = await wisePillClient.put(
       `devices/setAlarm?alarm=${
         alarmStatus ?? 1
-      }&device_imei=${imei}${alarmString}`
+      }&device_imei=${imei}${alarmString}`,
     );
     const { ResultCode: alarmCode, Result: alarmResult } = data;
     if (alarmCode >= 100) {
@@ -144,7 +144,7 @@ wisePillRouter.post("/alarms", async (req: Request, res: Response) => {
     const { data } = await wisePillClient.put(
       `devices/setRefillAlarm?refill_alarm=${
         refillAlarmStatus ?? 1
-      }&device_imei=${imei}${alarmString}`
+      }&device_imei=${imei}${alarmString}`,
     );
     const { ResultCode: refillAlarmCode, Result: refillAlarmResult } = data;
     if (refillAlarmCode >= 100) {
@@ -218,7 +218,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
     deviceFetchUrl,
     {
       data: assignedDevicesObject,
-    }
+    },
   );
   if (status === 200) {
     const { Result, ResultCode, records } = devicesResults;
@@ -231,7 +231,7 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
     for (const recordsGroup of chunkedRecord) {
       let devicesMergedWithRecords: Array<any> = recordsGroup;
       const imeis = compact(
-        map(recordsGroup, ({ device_imei }: any) => device_imei)
+        map(recordsGroup, ({ device_imei }: any) => device_imei),
       );
       const { data } = await wisePillClient.post(episodeUrl, {
         data: { imeis },
@@ -244,12 +244,12 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
           (episodes: any[], imei: string) => {
             const device = find(
               recordsGroup,
-              ({ device_imei }) => device_imei === imei
+              ({ device_imei }) => device_imei === imei,
             );
 
             const deviceIndex = findIndex(
               devicesMergedWithRecords,
-              ({ device_imei }) => device_imei === imei
+              ({ device_imei }) => device_imei === imei,
             );
 
             if (deviceIndex >= 0) {
@@ -260,11 +260,11 @@ wisePillRouter.get("/devices", async (req: Request, res: Response) => {
                   episodes,
                   (totalDays: number, { total_device_days }) =>
                     parseInt(total_device_days) + totalDays,
-                  0
+                  0,
                 ),
               };
             }
-          }
+          },
         );
       }
       sanitizedDevices = [
@@ -493,6 +493,7 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
           .status(404)
           .json({ message: `Patient ${patientId} not found` });
       }
+
       // Assigning device to episode
       if (deviceStatus === availableDeviceStatus) {
         if (!episodeId) {
@@ -516,9 +517,8 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             enrollment,
             programStage,
             orgUnit,
-            episodeIdAlreadyExisted
+            episodeIdAlreadyExisted,
           );
-
           return res.status(statusCode).json(body);
         }
       } else if (deviceStatus == assignedDeviceStatus) {
@@ -549,7 +549,7 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             enrollment,
             programStage,
             orgUnit,
-            episodeIdAlreadyExisted
+            episodeIdAlreadyExisted,
           );
 
           return res.status(statusCode).json(body);
