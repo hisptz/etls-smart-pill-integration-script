@@ -188,8 +188,8 @@ export async function updateDATEnrollmentStatus(
       enrollment,
       programStage,
       orgUnit,
-      trackedEntity,
-      occurredAt: eventDate,
+      trackedEntityInstance: trackedEntity,
+      eventDate,
       status: "ACTIVE",
       dataValues: [
         {
@@ -236,16 +236,21 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   let page = 1;
   for (const valueGroup of chunkedValues) {
     try {
-      const url = `tracker/trackedEntities.json?fields=attributes[attribute,value],orgUnit,trackedEntity,enrollments[program,enrollment,events[event,enrollment,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
+      const url = `trackedEntityInstances.json?fields=attributes[attribute,value],orgUnit,trackedEntityInstance,enrollments[program,enrollment,events[event,enrollment,trackedEntityInstance,eventDate,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
         ";",
       )}`;
 
       const { data, status } = await dhis2Client.get(url);
       if (status === 200) {
-        const { instances: trackedEntityInstances } = data;
+        const { trackedEntityInstances } = data;
         forEach(
           trackedEntityInstances,
-          ({ attributes, trackedEntity, orgUnit, enrollments }) => {
+          ({
+            attributes,
+            trackedEntityInstance: trackedEntity,
+            orgUnit,
+            enrollments,
+          }) => {
             const { value: imei } = find(
               attributes,
               ({ attribute: attributeId }) => attribute === attributeId,
@@ -317,7 +322,7 @@ export async function uploadDhis2Events(
     );
 
     try {
-      const url = `tracker?strategy=CREATE_AND_UPDATE&async=false&atomicMode=OBJECT`;
+      const url = `events?strategy=CREATE_AND_UPDATE`;
       const { status, data } = await dhis2Client.post(url, {
         events,
       });

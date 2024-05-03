@@ -20,12 +20,12 @@ export type AdherenceMapping = {
 
 export type DHIS2Event = {
   event: string;
-  trackedEntity: string;
+  trackedEntityInstance: string;
   program: string;
   enrollment: string;
   programStage: string;
   orgUnit: string;
-  occurredAt: string;
+  eventDate: string;
   status:
     | "ACTIVE"
     | "COMPLETED"
