@@ -65,20 +65,28 @@ Note:
 
 ### 3. Running the application
 
-The script can be run using either `node` as shown below:
+The script can be run using `bash` scripts as shown below:
 
 - Starting the API server: The API server can be started using the command
 
 ```
-node src/index.js start-api-server
+sh start-api-server.sh
 ```
 
 - Running migration: To run migration, there are two options, running daily or running in a specific range.
+
   - Running for the current day:
     ```
-    node src/index.js start-integration
+    sh start-auto-integration.sh
     ```
   - Running for a specified range (date format: YYYY-MM-DD):
+
     ```
-    node src/index.js start-integration --startDate 2023-01-01 --endDate 2023-06-30
+    sh start-interval-integration.sh --startDate=2023-01-01 --endDate=2023-06-30
     ```
+
+  - Running migration alignment: To run migration aligment, use the below `bash` sxcrip.
+
+        ```
+        sh start-alignment.sh
+        ```
