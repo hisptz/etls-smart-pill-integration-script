@@ -87,6 +87,6 @@ sh start-api-server.sh
 
 - Running migration alignment: To run migration alignment, use the below `bash` script.
 
-        ```
-        sh start-alignment.sh
-        ```
+    ```
+    sh start-alignment.sh
+    ```
