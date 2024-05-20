@@ -11,6 +11,7 @@ export type Episode = {
   lastSeen: string;
   batteryLevel: string;
   deviceStatus: string;
+  episodeOpened?: boolean;
 };
 
 export type AdherenceMapping = {
