@@ -6,7 +6,17 @@ import {
   Episode,
 } from "../types";
 import { DateTime } from "luxon";
-import { map, head, find, forEach, filter, values } from "lodash";
+import {
+  map,
+  head,
+  find,
+  forEach,
+  filter,
+  values,
+  keys,
+  some,
+  compact,
+} from "lodash";
 import logger from "../logging";
 import {
   getAssignedDevices,
@@ -19,6 +29,7 @@ import {
   getWisepillEpisodeValues,
   getSanitizedAdherence,
   sanitizeWisePillDateToDateTimeObjects,
+  closeWisepillEpisodes,
 } from "../helpers/wise-pill-api.helpers";
 import { uid } from "@hisptz/dhis2-utils";
 import {
@@ -50,7 +61,12 @@ export async function startIntegrationProcess({
       return;
     }
 
-    for (const { program, programStage, attributes } of programMapping) {
+    for (const {
+      program,
+      programStage,
+      attributes,
+      treatmentOutcomeProgramStages,
+    } of programMapping) {
       if (!program || !programStage || !attributes) {
         logger.warn(
           `There are program mapping is wrongly configured! Revisit configurations to ensure program, program and attributes are well configured`,
@@ -96,6 +112,53 @@ export async function startIntegrationProcess({
       } else {
         logger.info(
           `Skipping uploading events from program stage ${programStage} since there are no events`,
+        );
+      }
+
+      const trackedEntitiesWithOutcome = map(
+        filter(trackedEntityInstances, (trackedEntityInstances) => {
+          const { events, trackedEntity } = trackedEntityInstances;
+
+          return (
+            keys(trackedEntityInstancesWithEpisodesMapping).includes(
+              trackedEntity
+            ) &&
+            some(events, ({ programStage }) =>
+              [...(treatmentOutcomeProgramStages ?? [])].includes(programStage)
+            )
+          );
+        }),
+        ({ trackedEntity }) => trackedEntity
+      );
+
+      const episodesToClose = filter(
+        compact(
+          map(
+            trackedEntitiesWithOutcome,
+            (trackedEntity) =>
+              trackedEntityInstancesWithEpisodesMapping[trackedEntity] ?? ""
+          )
+        ),
+        (episode) => {
+          const episodeWithFullDetails = find(
+            episodes,
+            ({ id }) => episode === id
+          );
+
+          return (
+            episodeWithFullDetails && episodeWithFullDetails?.episodeOpened
+          );
+        }
+      );
+
+      if (episodesToClose.length) {
+        logger.info(
+          `Closing ${episodesToClose.length} episodes for program stage ${programStage}`
+        );
+        await closeWisepillEpisodes(episodesToClose);
+      } else {
+        logger.info(
+          `Skipping closing episodes from program stage ${programStage} since there are no episodes to close`
         );
       }
     }

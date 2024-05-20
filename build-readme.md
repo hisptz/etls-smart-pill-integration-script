@@ -13,7 +13,6 @@ Since this is a node script, it needs [Node](https://nodejs.org/en) to be instal
 Before using this script, ensure you have the following:
 
 - Node.js installed on your system
-- TypeScript installed globally (npm install -g typescript)
 - Access to both evriMED and DHIS2 APIs with appropriate permissions
 - Configuration files for both systems containing necessary credentials and endpoints
 
@@ -23,7 +22,7 @@ The following are the steps on how to run the script:
 
 ### 1. Installing packages
 
-Packages can be installed using `npm` Or `yarn` using below commands:
+Packages can be installed using `npm` Or `yarn` using the below commands:
 
 ```
 npm install
@@ -59,6 +58,7 @@ Note:
   - DHIS2_PASSWORD: This is the password for accessing the DHIS2 instance.
   - WISEPILL_BASE_URL: This is the url for accessing the evriMED API.
   - WISEPILL_USERNAME: This is the username for accessing evriMED API.
+  - WISEPILL_SECRET: This is a secret key for accessing the evriMED API
   - TIME_ZONE: This is the optional timezone to be assigned to evriMED devices. If not set, the system timezone will be assigned to the devices.
   - PORT: This is the port where the exposed API will be accessible by DHIS2 applications. If not set, the API service will be available at port:3000.
   - SECRET_KEY: This is the secret key that will be used to access the exposed API. This will be supplied to the DAT web application to assist with data fetch to evriMED API.
@@ -85,8 +85,8 @@ sh start-api-server.sh
     sh start-interval-integration.sh --startDate=2023-01-01 --endDate=2023-06-30
     ```
 
-  - Running migration alignment: To run migration aligment, use the below `bash` sxcrip.
+- Running migration alignment: To run migration alignment, use the below `bash` script.
 
-        ```
-        sh start-alignment.sh
-        ```
+    ```
+    sh start-alignment.sh
+    ```
