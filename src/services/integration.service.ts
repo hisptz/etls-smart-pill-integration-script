@@ -46,7 +46,7 @@ export async function startIntegrationProcess({
       `Started integration with WisePill API ${
         startDate ? "from " + startDate : ""
       } ${endDate ? "up to " + endDate : ""}`.trim() +
-        ` at ${DateTime.now().toISO()}`,
+        ` at ${DateTime.now().toISO()}`
     );
 
     logger.info("Fetching DAT devices assigned in DHIS2.");
@@ -69,7 +69,7 @@ export async function startIntegrationProcess({
     } of programMapping) {
       if (!program || !programStage || !attributes) {
         logger.warn(
-          `There are program mapping is wrongly configured! Revisit configurations to ensure program, program and attributes are well configured`,
+          `There are program mapping is wrongly configured! Revisit configurations to ensure program, program and attributes are well configured`
         );
         break;
       }
@@ -77,19 +77,19 @@ export async function startIntegrationProcess({
       const trackedEntityInstances =
         await getDhis2TrackedEntityInstancesWithEvents(
           { program, programStage, attributes },
-          assignedDevices,
+          assignedDevices
         );
 
       logger.info("Mapping Tracked Entity Instances with episodes");
       const trackedEntityInstancesWithEpisodesMapping =
         getTrackedEntityInstanceWithEpisodesMapping(
           trackedEntityInstances,
-          attributes["episodeId"],
+          attributes["episodeId"]
         );
 
       logger.info("Fetching Adherence episodes from Wisepill.");
       const episodes = await getWisepillEpisodeValues(
-        values(trackedEntityInstancesWithEpisodesMapping),
+        values(trackedEntityInstancesWithEpisodesMapping)
       );
 
       const eventPayloads = generateEventPayload(
@@ -101,17 +101,17 @@ export async function startIntegrationProcess({
         {
           startDate,
           endDate,
-        },
+        }
       );
 
       if (eventPayloads.length) {
         logger.info(
-          `Uploading ${eventPayloads.length} events for program stage ${programStage}`,
+          `Uploading ${eventPayloads.length} events for program stage ${programStage}`
         );
         await uploadDhis2Events(eventPayloads);
       } else {
         logger.info(
-          `Skipping uploading events from program stage ${programStage} since there are no events`,
+          `Skipping uploading events from program stage ${programStage} since there are no events`
         );
       }
 
@@ -164,19 +164,19 @@ export async function startIntegrationProcess({
     }
   } catch (error: any) {
     logger.error(
-      `An error occurred while running the integration script. Check the error below`,
+      `An error occurred while running the integration script. Check the error below`
     );
     logger.error(error.toString());
   }
 
   logger.info(
-    `Terminating the integration process at ${DateTime.now().toISO()}`,
+    `Terminating the integration process at ${DateTime.now().toISO()}`
   );
 }
 
 function getTrackedEntityInstanceWithEpisodesMapping(
   trackedEntityInstances: Record<string, any>,
-  episodeIdAttribute: string,
+  episodeIdAttribute: string
 ) {
   let mappedTrackedEntityInstances: Record<string, any> = {};
   forEach(trackedEntityInstances, (tei) => {
@@ -194,14 +194,14 @@ function getTrackedEntityInstanceWithEpisodesMapping(
 
 async function getDhis2TrackedEntityInstancesWithEvents(
   programMapping: any,
-  assignedDevices: string[],
+  assignedDevices: string[]
 ): Promise<Record<string, any>[]> {
   const { program, programStage, attributes } = programMapping;
   return await getDhis2TrackedEntityInstancesByAttribute(
     program,
     assignedDevices,
     attributes["deviceIMEInumber"],
-    programStage,
+    programStage
   );
 }
 
@@ -211,7 +211,7 @@ function generateEventPayload(
   program: string,
   programStage: string,
   trackedEntityInstancesWithEpisodesMapping: Record<string, any>,
-  duration: Duration,
+  duration: Duration
 ): any[] {
   logger.info("Preparing the events payloads for migrating to DHIS2");
 
@@ -236,11 +236,11 @@ function generateEventPayload(
 
     const teiEpisode = find(
       episodes,
-      ({ id: episodeId }) => episodeId === teiEpisodeId,
+      ({ id: episodeId }) => episodeId === teiEpisodeId
     );
 
     logger.info(
-      `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntity} assigned to device ${imei}`,
+      `Evaluating DHIS2 event payloads for tracked entity instance ${trackedEntity} assigned to device ${imei}`
     );
     if (teiEpisode) {
       const {
@@ -259,7 +259,7 @@ function generateEventPayload(
         // if the last seen for the episode is the current day
         if ((now.diff(lastSeenDate, ["days"]).toObject().days ?? 0) >= 1) {
           logger.warn(
-            `Device with IMEI ${imei} has not been communicating data since ${lastSeen}`,
+            `Device with IMEI ${imei} has not been communicating data since ${lastSeen}`
           );
         }
         const episodeAdherences: Array<AdherenceMapping> = [];
@@ -290,7 +290,7 @@ function generateEventPayload(
           dataValues: generateDataValuesFromAdherenceMapping(
             { adherence, date },
             batteryLevel,
-            deviceStatus,
+            deviceStatus
           ),
         })).reverse();
 
@@ -306,7 +306,7 @@ function generateEventPayload(
             orgUnit,
             eventDate,
             events,
-            dataValues,
+            dataValues
           );
           if (teiEvent) {
             eventPayloads.push(teiEvent);
@@ -317,7 +317,7 @@ function generateEventPayload(
       else if (startDate || endDate) {
         const episodeAdherences = getSanitizedAdherence(
           adherences,
-          episodeStartDate,
+          episodeStartDate
         );
         // evaluation of the range for running the script
         const evaluationStartDate = startDate
@@ -346,7 +346,7 @@ function generateEventPayload(
               orgUnit,
               date,
               events,
-              dataValues,
+              dataValues
             );
             if (adherenceEvent) {
               eventPayloads.push(adherenceEvent);
@@ -356,7 +356,7 @@ function generateEventPayload(
       }
     } else {
       logger.warn(
-        `Tracked entity instance linked to device with IMEI ${imei} has not wisepill episodes`,
+        `Tracked entity instance linked to device with IMEI ${imei} has not wisepill episodes`
       );
     }
   }
@@ -372,10 +372,10 @@ function getDHIS2EventPayload(
   orgUnit: string,
   eventDate: string,
   events: any[],
-  dataValues: DHIS2DataValue[],
+  dataValues: DHIS2DataValue[]
 ): DHIS2Event | null {
   const sanitizedEventDate = DateTime.fromISO(
-    sanitizeWisePillDateToDateTimeObjects(eventDate),
+    sanitizeWisePillDateToDateTimeObjects(eventDate)
   ).toFormat("yyyy-MM-dd");
   const existingEvent: any =
     events && events.length
@@ -384,8 +384,8 @@ function getDHIS2EventPayload(
             events,
             ({ occurredAt: d2EventDate }) =>
               DateTime.fromISO(d2EventDate).toFormat("yyyy-MM-dd") ==
-              sanitizedEventDate,
-          ),
+              sanitizedEventDate
+          )
         )
       : null;
 
@@ -395,22 +395,22 @@ function getDHIS2EventPayload(
   if (existingEvent) {
     const currentDeviceSignalDataValue = find(
       dataValues,
-      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT,
+      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT
     );
 
     const previousDeviceSignalDataValue = find(
       existingEvent["dataValues"] ?? [],
-      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT,
+      ({ dataElement }) => dataElement === DEVICE_SIGNAL_DATA_ELEMENT
     );
 
     const currentDoseDateDataValue = find(
       dataValues,
-      ({ dataElement }) => dataElement === DOSAGE_TIME_DATA_ELEMENT,
+      ({ dataElement }) => dataElement === DOSAGE_TIME_DATA_ELEMENT
     );
 
     const previousDoseDateDataValue = find(
       existingEvent["dataValues"] ?? [],
-      ({ dataElement }) => dataElement === DOSAGE_TIME_DATA_ELEMENT,
+      ({ dataElement }) => dataElement === DOSAGE_TIME_DATA_ELEMENT
     );
 
     const doseDateTime = previousDoseDateDataValue?.value
@@ -431,11 +431,11 @@ function getDHIS2EventPayload(
           existingEvent["dataValues"] ?? [],
           ({ dataElement }) =>
             ![DEVICE_SIGNAL_DATA_ELEMENT, DOSAGE_TIME_DATA_ELEMENT].includes(
-              dataElement,
-            ),
+              dataElement
+            )
         ),
         ...filter(dataValues, ({ dataElement }) =>
-          [DEVICE_SIGNAL_DATA_ELEMENT].includes(dataElement),
+          [DEVICE_SIGNAL_DATA_ELEMENT].includes(dataElement)
         ),
         {
           dataElement: DOSAGE_TIME_DATA_ELEMENT,
