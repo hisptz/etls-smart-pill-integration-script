@@ -1,12 +1,11 @@
 #!/bin/bash
 
-cp .env.example build/script/
 cp build-readme.md build/script/README.md
 cp package.json build/script/package.json
+cp .env.example build/script/.env.example
 cp start-api-server.sh build/script/start-api-server.sh
 cp start-interval-integration.sh build/script/start-interval-integration.sh
 cp start-auto-integration.sh build/script/start-auto-integration.sh
-cp .env.example build/scripts/.env.example
 
 PKG_VERSION=$(node -p "require('./package.json').version")
 PKG_NAME=$(node -p "require('./package.json').name")
