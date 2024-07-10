@@ -483,15 +483,23 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
         enrollment,
         orgUnit,
         episodeId: fetchedEpisodeId,
-      } = await getPatientDetailsFromDHIS2(patientId);
+      } = (await getPatientDetailsFromDHIS2(patientId)) || {};
 
       episodeId = fetchedEpisodeId ?? null;
       const episodeIdAlreadyExisted = episodeId ? true : false;
 
-      if (!trackedEntity) {
+      if (!trackedEntity || !enrollment) {
         return res
           .status(404)
           .json({ message: `Patient ${patientId} not found` });
+      } else if (!program) {
+        return res.status(404).json({
+          message: `Patient ${patientId} is not be found enrolled in any of the mapped programs`,
+        });
+      } else if (!programStage) {
+        return res.status(404).json({
+          message: `Can not assign device to patient ${patientId} because of errors in configuration. Contact the admin`,
+        });
       }
 
       // Assigning device to episode
