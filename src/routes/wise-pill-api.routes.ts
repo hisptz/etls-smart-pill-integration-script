@@ -11,7 +11,11 @@ import {
   reduce,
   first,
 } from "lodash";
-import { addAlarmSchema, createEpisodeSchema } from "../schema";
+import {
+  addAlarmSchema,
+  createEpisodeSchema,
+  unassignDeviceSchema,
+} from "../schema";
 import {
   assignEpisodeToDevice,
   binaryToDecimal,
@@ -587,3 +591,61 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
       .json({ message: "Internal server error", errorTrace: error.toString() });
   }
 });
+
+// For unassigning device from patient
+/**
+ * @swagger
+ * /devices/unasssign:
+ *   put:
+ *     summary: Unassign device from patient
+ *     description: Unassign device from patient
+ *     tags:
+ *       - Devices
+ *     parameters:
+ *       - in: query
+ *         name: imei
+ *         required: true
+ *         description: Device IMEI number
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Device unassigned successfully
+ *       400:
+ *         description: Bad request
+ *       409:
+ *         description: Conflict
+ *       500:
+ *         description: Internal server error
+ */
+wisePillRouter.put(
+  "/devices/unasssign",
+  async (req: Request, res: Response) => {
+    const availableDeviceStatus = 2;
+    const params = req.query;
+    const { error: bodyValidationError } =
+      unassignDeviceSchema.validate(params);
+    if (bodyValidationError) {
+      return res.status(400).json({
+        errors: bodyValidationError.details.map((error: any) => error.message),
+      });
+    }
+    const { imei } = params;
+    const unassingDeviceUrl = `devices/unassignDevice?device_imei=${imei}&device_status=${availableDeviceStatus}`;
+    try {
+      const { data } = await wisePillClient.put(unassingDeviceUrl);
+      const { ResultCode: deviceUnassignCode, Result: message } = data;
+      if (deviceUnassignCode == 0) {
+        return res.status(200).json({ message });
+      } else {
+        return res.status(409).json({ message });
+      }
+    } catch (error: any) {
+      logger.error(error.toString());
+      return res.status(500).json({
+        message: "Internal server error",
+        errorTrace: error.toString(),
+      });
+    }
+  },
+);
