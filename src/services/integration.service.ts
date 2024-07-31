@@ -76,7 +76,7 @@ export async function startIntegrationProcess({
 
       const trackedEntityInstances =
         await getDhis2TrackedEntityInstancesWithEvents(
-          { program, programStage, attributes },
+          { program, programStage, attributes, treatmentOutcomeProgramStages },
           assignedDevices
         );
 
@@ -116,8 +116,8 @@ export async function startIntegrationProcess({
       }
 
       const trackedEntitiesWithOutcome = map(
-        filter(trackedEntityInstances, (trackedEntityInstances) => {
-          const { events, trackedEntity } = trackedEntityInstances;
+        filter(trackedEntityInstances, (tei) => {
+          const { events, trackedEntity } = tei;
 
           return (
             keys(trackedEntityInstancesWithEpisodesMapping).includes(
@@ -196,12 +196,18 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   programMapping: any,
   assignedDevices: string[]
 ): Promise<Record<string, any>[]> {
-  const { program, programStage, attributes } = programMapping;
+  const { program, programStage, attributes, treatmentOutcomeProgramStages } =
+    programMapping;
+
+  const programStages = [
+    programStage,
+    ...(treatmentOutcomeProgramStages ?? []),
+  ];
   return await getDhis2TrackedEntityInstancesByAttribute(
     program,
     assignedDevices,
     attributes["deviceIMEInumber"],
-    programStage
+    programStages
   );
 }
 
