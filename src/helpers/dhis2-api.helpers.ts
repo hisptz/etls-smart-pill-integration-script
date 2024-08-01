@@ -7,6 +7,7 @@ import {
   forEach,
   flattenDeep,
   compact,
+  omit,
 } from "lodash";
 import { mapLimit, asyncify } from "async";
 import {
@@ -140,7 +141,15 @@ export async function getPatientDetailsFromDHIS2(
                 if (!tei) {
                   return null;
                 }
-                const { attributes, trackedEntity, orgUnit, enrollment } = tei;
+                const {
+                  attributes,
+                  trackedEntity,
+                  orgUnit,
+                  enrollment: enrollmentObject,
+                } = tei;
+
+                const { enrollment } = enrollmentObject;
+
                 const episodeId = find(
                   attributes,
                   ({ attribute }) => attribute === episodeIdAttribute
@@ -228,8 +237,9 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
     logger.info(
       `Fetching DHIS2 tracked entity instances for ${program} program`
     );
-  const sanitizedTrackedEntityInstances: { [key: string]: string | any[] }[] =
-    [];
+  const sanitizedTrackedEntityInstances: {
+    [key: string]: string | any[] | any;
+  }[] = [];
 
   const pageSize = 50;
   const chunkedValues = chunk(values, pageSize);
@@ -237,7 +247,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   let page = 1;
   for (const valueGroup of chunkedValues) {
     try {
-      const url = `tracker/trackedEntities.json?fields=attributes[attribute,value],orgUnit,trackedEntity,enrollments[program,enrollment,events[event,enrollment,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
+      const url = `tracker/trackedEntities.json?fields=attributes[attribute,value],trackedEntityType,orgUnit,trackedEntity,enrollments[program,enrollment,events[event,enrollment,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
         ";"
       )}`;
 
@@ -246,7 +256,13 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
         const { instances: trackedEntityInstances } = data;
         forEach(
           trackedEntityInstances,
-          ({ attributes, trackedEntity, orgUnit, enrollments }) => {
+          ({
+            attributes,
+            trackedEntity,
+            trackedEntityType,
+            orgUnit,
+            enrollments,
+          }) => {
             const { value: imei } = find(
               attributes,
               ({ attribute: attributeId }) => attribute === attributeId
@@ -263,7 +279,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
                   )
                 : {};
 
-            const { enrollment, events: teiEvents } = latestProgramEnrollment;
+            const { events: teiEvents } = latestProgramEnrollment;
 
             const events = filter(
               teiEvents ?? [],
@@ -273,7 +289,8 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
             sanitizedTrackedEntityInstances.push({
               imei,
               trackedEntity,
-              enrollment,
+              trackedEntityType,
+              enrollment: omit(latestProgramEnrollment, ["events"]),
               orgUnit,
               attributes,
               ...(programStages.length && { events }),
