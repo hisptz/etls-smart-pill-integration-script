@@ -38,6 +38,18 @@ export type DHIS2Event = {
   completedAt?: string;
 };
 
+export type DHIS2TrackedEntity = {
+  trackedEntity: string;
+  trackedEntityType: string;
+  orgUnit: string;
+  attributes: DHIS2Attributes[];
+};
+
+export type DHIS2Attributes = {
+  attribute: string;
+  value: string | any;
+};
+
 export type DHIS2DataValue = {
   dataElement: string;
   value: string | number | boolean;

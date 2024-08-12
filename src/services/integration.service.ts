@@ -2,6 +2,7 @@ import {
   AdherenceMapping,
   DHIS2DataValue,
   DHIS2Event,
+  DHIS2TrackedEntity,
   Duration,
   Episode,
 } from "../types";
@@ -16,13 +17,16 @@ import {
   keys,
   some,
   compact,
+  omit,
 } from "lodash";
 import logger from "../logging";
 import {
   getAssignedDevices,
   getDhis2TrackedEntityInstancesByAttribute,
   getProgramMapping,
+  unassignDevices,
   uploadDhis2Events,
+  uploadDhis2TrackedEntities,
 } from "../helpers/dhis2-api.helpers";
 import {
   generateDataValuesFromAdherenceMapping,
@@ -76,7 +80,7 @@ export async function startIntegrationProcess({
 
       const trackedEntityInstances =
         await getDhis2TrackedEntityInstancesWithEvents(
-          { program, programStage, attributes },
+          { program, programStage, attributes, treatmentOutcomeProgramStages },
           assignedDevices
         );
 
@@ -116,8 +120,8 @@ export async function startIntegrationProcess({
       }
 
       const trackedEntitiesWithOutcome = map(
-        filter(trackedEntityInstances, (trackedEntityInstances) => {
-          const { events, trackedEntity } = trackedEntityInstances;
+        filter(trackedEntityInstances, (tei) => {
+          const { events, trackedEntity } = tei;
 
           return (
             keys(trackedEntityInstancesWithEpisodesMapping).includes(
@@ -155,7 +159,51 @@ export async function startIntegrationProcess({
         logger.info(
           `Closing ${episodesToClose.length} episodes for program stage ${programStage}`
         );
-        await closeWisepillEpisodes(episodesToClose);
+        const closedEpisodes = await closeWisepillEpisodes(episodesToClose);
+        const deviceImeisToBeFreed: string[] = [];
+        const trackedEntitiesToUpdate = map(
+          filter(
+            trackedEntityInstances,
+            ({ trackedEntity, attributes: teiAttributes }) =>
+              trackedEntitiesWithOutcome.includes(trackedEntity) &&
+              find(
+                teiAttributes,
+                ({ attribute, value }) =>
+                  attribute == attributes["episodeId"] &&
+                  closedEpisodes.includes(value)
+              )
+          ),
+          (trackedEntity) =>
+            omit(
+              {
+                ...trackedEntity,
+                attributes: map(
+                  trackedEntity.attributes,
+                  ({ attribute, value }) => {
+                    if (attribute == attributes["episodeId"]) {
+                      return { attribute, value: null };
+                    } else if (attribute == attributes["deviceIMEInumber"]) {
+                      deviceImeisToBeFreed.push(value);
+                      return { attribute, value: null };
+                    } else {
+                      return { attribute, value };
+                    }
+                  }
+                ),
+              },
+              ["events", "enrollment", "imei"]
+            )
+        );
+        logger.info(
+          `Removing devices for ${trackedEntitiesToUpdate.length} clients`
+        );
+        await uploadDhis2TrackedEntities(
+          trackedEntitiesToUpdate as DHIS2TrackedEntity[]
+        );
+        logger.info(
+          `Releasing ${deviceImeisToBeFreed.length} devices to be ready for use`
+        );
+        await unassignDevices(deviceImeisToBeFreed);
       } else {
         logger.info(
           `Skipping closing episodes from program stage ${programStage} since there are no episodes to close`
@@ -196,12 +244,18 @@ async function getDhis2TrackedEntityInstancesWithEvents(
   programMapping: any,
   assignedDevices: string[]
 ): Promise<Record<string, any>[]> {
-  const { program, programStage, attributes } = programMapping;
+  const { program, programStage, attributes, treatmentOutcomeProgramStages } =
+    programMapping;
+
+  const programStages = [
+    programStage,
+    ...(treatmentOutcomeProgramStages ?? []),
+  ];
   return await getDhis2TrackedEntityInstancesByAttribute(
     program,
     assignedDevices,
     attributes["deviceIMEInumber"],
-    programStage
+    programStages
   );
 }
 
