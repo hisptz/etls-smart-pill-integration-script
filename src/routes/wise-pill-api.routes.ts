@@ -11,7 +11,11 @@ import {
   reduce,
   first,
 } from "lodash";
-import { addAlarmSchema, createEpisodeSchema } from "../schema";
+import {
+  addAlarmSchema,
+  createEpisodeSchema,
+  unassignDeviceSchema,
+} from "../schema";
 import {
   assignEpisodeToDevice,
   binaryToDecimal,
@@ -26,8 +30,10 @@ import {
 import wisePillClient from "../clients/wise-pill";
 import { DeviceDetails } from "../types";
 import {
+  assignDevices,
   getAssignedDevices,
   getPatientDetailsFromDHIS2,
+  unassignDevices,
 } from "../helpers/dhis2-api.helpers";
 import logger from "../logging";
 
@@ -527,6 +533,7 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             orgUnit,
             episodeIdAlreadyExisted,
           );
+          await assignDevices([imei as string]);
           return res.status(statusCode).json(body);
         }
       } else if (deviceStatus == assignedDeviceStatus) {
@@ -585,5 +592,60 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
     return res
       .status(500)
       .json({ message: "Internal server error", errorTrace: error.toString() });
+  }
+});
+
+// For unassign a device from patient
+/**
+ * @swagger
+ * /devices/unassign:
+ *   put:
+ *     summary: Unassign device from patient
+ *     description: Unassign device from patient
+ *     tags:
+ *       - Devices
+ *     parameters:
+ *       - in: query
+ *         name: imei
+ *         required: true
+ *         description: Device IMEI number
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Device unassigned successfully
+ *       400:
+ *         description: Bad request
+ *       409:
+ *         description: Conflict
+ *       500:
+ *         description: Internal server error
+ */
+wisePillRouter.put("/devices/unassign", async (req: Request, res: Response) => {
+  const availableDeviceStatus = 2;
+  const params = req.query;
+  const { error: bodyValidationError } = unassignDeviceSchema.validate(params);
+  if (bodyValidationError) {
+    return res.status(400).json({
+      errors: bodyValidationError.details.map((error: any) => error.message),
+    });
+  }
+  const { imei } = params;
+  const unassignDeviceUrl = `devices/unassignDevice?device_imei=${imei}&device_status=${availableDeviceStatus}`;
+  try {
+    const { data } = await wisePillClient.put(unassignDeviceUrl);
+    const { ResultCode: deviceUnassignCode, Result: message } = data;
+    if (deviceUnassignCode == 0) {
+      await unassignDevices([imei as string]);
+      return res.status(200).json({ message });
+    } else {
+      return res.status(409).json({ message });
+    }
+  } catch (error: any) {
+    logger.error(error.toString());
+    return res.status(500).json({
+      message: "Internal server error",
+      errorTrace: error.toString(),
+    });
   }
 });
