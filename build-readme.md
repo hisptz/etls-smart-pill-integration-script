@@ -63,30 +63,36 @@ Note:
   - PORT: This is the port where the exposed API will be accessible by DHIS2 applications. If not set, the API service will be available at port:3000.
   - SECRET_KEY: This is the secret key that will be used to access the exposed API. This will be supplied to the DAT web application to assist with data fetch to evriMED API.
 
-### 3. Running the application
+### 3. Deployment
 
-The script can be run using `bash` scripts as shown below:
+The deployment of this script is done in two ways.
 
-- Starting the API server: The API server can be started using the command
+- Wisepill API mediator: The mediator assists with the communication between the DHIS2 custom application with the Wisepill smart boxes for operations like device assignment and reading device information.
+  <br /><br />
+  The mediator will be available at `http://localhost:<PORT>`. This can be configured on the proxy so as the URL that points to this `PORT` can be set within the web application as the mediator URL to allow communication with wisepill API.
+  <br /><br />
+  The script to start the API mediator can be run by the below `bash` command:
 
-```
-sh start-api-server.sh
-```
+  ```
+  sh start-api-server.sh
+  ```
 
-- Running migration: To run migration, there are two options, running daily or running in a specific range.
+- Integration migration script: The integration script assist with migrating the episodes from the Wisepill API into the DHIS2 mapped program as events. This script transforms the string data device into DHIS2 events. This scripts populates the device data into DHIS2 to assist with calendar rendering and reports generation.
+  <br /><br />
+  The script has different options of running, it can be run for specific day using `start-auto-integration.sh` or on a specific date range using `start-interval-integration.sh --startDate=<start-date> --endDate=<end-date>`
+  <br /><br />
+  Below are the `bash` command example for running the migrations:
 
   - Running for the current day:
+
     ```
     sh start-auto-integration.sh
     ```
+
+    <strong>Note</strong>: This script is advised to be run on a cron job to automate the process of migration in daily basis.
+
   - Running for a specified range (date format: YYYY-MM-DD):
 
     ```
     sh start-interval-integration.sh --startDate=2023-01-01 --endDate=2023-06-30
-    ```
-
-- Running migration alignment: To run migration alignment, use the below `bash` script.
-
-    ```
-    sh start-alignment.sh
     ```
