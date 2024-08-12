@@ -30,6 +30,7 @@ import {
 import wisePillClient from "../clients/wise-pill";
 import { DeviceDetails } from "../types";
 import {
+  assignDevices,
   getAssignedDevices,
   getPatientDetailsFromDHIS2,
   unassignDevices,
@@ -532,6 +533,7 @@ wisePillRouter.post("/devices/assign", async (req: Request, res: Response) => {
             orgUnit,
             episodeIdAlreadyExisted,
           );
+          await assignDevices([imei as string]);
           return res.status(statusCode).json(body);
         }
       } else if (deviceStatus == assignedDeviceStatus) {
