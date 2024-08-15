@@ -10,6 +10,10 @@ export const createEpisodeSchema = Joi.object({
   force: Joi.boolean().optional(),
 });
 
+export const unassignDeviceSchema = Joi.object({
+  imei: Joi.string().required(),
+});
+
 export const addAlarmSchema = Joi.object({
   imei: Joi.string().required(),
   alarm: Joi.string().optional().allow(null),

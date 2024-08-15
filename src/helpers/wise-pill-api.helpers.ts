@@ -245,12 +245,24 @@ export async function assignEpisodeToDevice(
   }
 }
 
-export async function closeWisepillEpisodes(episodes: string[]): Promise<void> {
+export async function closeWisepillEpisodes(
+  episodes: string[]
+): Promise<string[]> {
+  const closedEpisodes: string[] = [];
   const date = DateTime.now().toFormat("yyyy-MM-dd");
-  const closeEpisodeUrl = `devices/closeEpisode?episode_end_date=${date}`;
+  const closeEpisodeUrl = `episodes/closeEpisode?episode_end_date=${date}`;
+  const unassignDeviceUrl = `devices/unassignDevice?device_status=2`;
   for (var episode of episodes) {
-    await wisePillClient.put(`${closeEpisodeUrl}&episode_id=${episode}`);
+    try {
+      await wisePillClient.put(`${closeEpisodeUrl}&episode_id=${episode}`);
+      await wisePillClient.put(`${unassignDeviceUrl}&episode_id=${episode}`);
+      closedEpisodes.push(episode);
+    } catch (error) {
+      logger.error(`Failed to close episode ${episode}`);
+    }
   }
+
+  return closedEpisodes;
 }
 
 export async function unassignPreviousLinkedEpisodes(

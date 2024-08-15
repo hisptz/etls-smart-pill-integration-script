@@ -7,6 +7,7 @@ import {
   forEach,
   flattenDeep,
   compact,
+  omit,
 } from "lodash";
 import { mapLimit, asyncify } from "async";
 import {
@@ -19,7 +20,7 @@ import dhis2Client from "../clients/dhis2";
 import logger from "../logging";
 import { DateTime } from "luxon";
 import { uid } from "@hisptz/dhis2-utils";
-import { DHIS2Event } from "../types";
+import { DHIS2Event, DHIS2TrackedEntity } from "../types";
 import { ProgramMapping } from "../models/program-mapping.model";
 
 async function getDataStoreSettings(): Promise<any> {
@@ -44,6 +45,41 @@ export async function getAssignedDevices(): Promise<string[]> {
         ({ code }) => code,
       )
     : [];
+}
+
+export async function unassignDevices(devices: string[]): Promise<void> {
+  var settings = await getDataStoreSettings();
+  const url = `dataStore/${WEB_APP_DATASTORE_KEY}/settings`;
+
+  settings = {
+    ...settings,
+    deviceIMEIList: map(settings.deviceIMEIList, (device) => ({
+      ...device,
+      inUse: devices.includes(device.code) ? false : device.inUse,
+    })),
+  };
+
+  await dhis2Client.put(url, settings);
+}
+
+export async function assignDevices(devices: string[]): Promise<void> {
+  var settings = await getDataStoreSettings();
+  const url = `dataStore/${WEB_APP_DATASTORE_KEY}/settings`;
+
+  settings = {
+    ...settings,
+    deviceIMEIList: [
+      ...settings.deviceIMEIList,
+      ...map(devices, (code) => ({
+        inUse: true,
+        IMEI: code,
+        name: code,
+        code,
+      })),
+    ],
+  };
+
+  await dhis2Client.put(url, settings);
 }
 
 export async function getProgramMapping(): Promise<ProgramMapping[]> {
@@ -140,7 +176,15 @@ export async function getPatientDetailsFromDHIS2(
                 if (!tei) {
                   return null;
                 }
-                const { attributes, trackedEntity, orgUnit, enrollment } = tei;
+                const {
+                  attributes,
+                  trackedEntity,
+                  orgUnit,
+                  enrollment: enrollmentObject,
+                } = tei;
+
+                const { enrollment } = enrollmentObject;
+
                 const episodeId = find(
                   attributes,
                   ({ attribute }) => attribute === episodeIdAttribute,
@@ -220,16 +264,17 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   program: string,
   values: string[],
   attribute: string,
-  programStage?: string,
+  programStages: string[] = [],
 ): Promise<Array<{ [key: string]: any }>> {
-  const showLogs = (programStage ?? "").length > 0;
+  const showLogs = programStages.length > 0;
 
   showLogs &&
     logger.info(
       `Fetching DHIS2 tracked entity instances for ${program} program`,
     );
-  const sanitizedTrackedEntityInstances: { [key: string]: string | any[] }[] =
-    [];
+  const sanitizedTrackedEntityInstances: {
+    [key: string]: string | any[] | any;
+  }[] = [];
 
   const pageSize = 50;
   const chunkedValues = chunk(values, pageSize);
@@ -237,7 +282,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
   let page = 1;
   for (const valueGroup of chunkedValues) {
     try {
-      const url = `trackedEntityInstances.json?fields=attributes[attribute,value],orgUnit,trackedEntityInstance,enrollments[program,enrollment,events[event,enrollment,trackedEntityInstance,eventDate,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
+      const url = `trackedEntityInstances.json?fields=attributes[attribute,value],trackedEntityType,orgUnit,trackedEntityInstance,enrollments[program,enrollment,events[event,enrollment,trackedEntity,occurredAt,programStage,dataValues[dataElement,value]]]&ouMode=ALL&program=${program}&totalPages=true&pageSize=${pageSize}&filter=${attribute}:in:${valueGroup.join(
         ";",
       )}`;
 
@@ -249,6 +294,7 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
           ({
             attributes,
             trackedEntityInstance: trackedEntity,
+            trackedEntityType,
             orgUnit,
             enrollments,
           }) => {
@@ -268,20 +314,21 @@ export async function getDhis2TrackedEntityInstancesByAttribute(
                   )
                 : {};
 
-            const { enrollment, events: teiEvents } = latestProgramEnrollment;
+            const { events: teiEvents } = latestProgramEnrollment;
 
             const events = filter(
               teiEvents ?? [],
               ({ programStage: eventProgramStage }) =>
-                eventProgramStage === programStage,
+                programStages.includes(eventProgramStage),
             );
             sanitizedTrackedEntityInstances.push({
               imei,
               trackedEntity,
-              enrollment,
+              trackedEntityType,
+              enrollment: omit(latestProgramEnrollment, ["events"]),
               orgUnit,
               attributes,
-              ...(programStage && { events }),
+              ...(programStages.length && { events }),
             });
           },
         );
@@ -342,6 +389,46 @@ export async function uploadDhis2Events(
     } catch (error: any) {
       logger.warn(
         `Failed to save the adherence events at page ${page}. Check the error below`,
+      );
+      logSanitizedConflictsImportSummary(error);
+    }
+    page++;
+  }
+}
+
+export async function uploadDhis2TrackedEntities(
+  trackedEntityPayloads: DHIS2TrackedEntity[],
+): Promise<void> {
+  const paginationSize = 100;
+  logger.info(`Evaluating pagination by ${[paginationSize]} page size`);
+  const chunkedTrackedEntities = chunk(trackedEntityPayloads, paginationSize);
+  let page = 1;
+
+  for (const trackedEntities of chunkedTrackedEntities) {
+    logger.info(
+      `Uploading Tracked Entities to DHIS2: ${page}/${chunkedTrackedEntities.length}`,
+    );
+
+    try {
+      const url = `tracker?strategy=CREATE_AND_UPDATE&async=false&atomicMode=OBJECT`;
+      const { status, data } = await dhis2Client.post(url, {
+        trackedEntities,
+      });
+
+      if (status === 200) {
+        logger.info(
+          `Successfully saved tracked entities ${page}/${chunkedTrackedEntities.length}`,
+        );
+        logImportSummary(data);
+      } else {
+        logger.warn(
+          `There are errors in saving the the tracked entities at page ${page}`,
+        );
+        logImportSummary(data);
+      }
+    } catch (error: any) {
+      logger.warn(
+        `Failed to save the tracked entities at page ${page}. Check the error below`,
       );
       logSanitizedConflictsImportSummary(error);
     }
