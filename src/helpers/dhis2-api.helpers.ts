@@ -68,15 +68,10 @@ export async function assignDevices(devices: string[]): Promise<void> {
 
   settings = {
     ...settings,
-    deviceIMEIList: [
-      ...settings.deviceIMEIList,
-      ...map(devices, (code) => ({
-        inUse: true,
-        IMEI: code,
-        name: code,
-        code,
-      })),
-    ],
+    deviceIMEIList: map(settings.deviceIMEIList, (device) => ({
+      ...device,
+      inUse: devices.includes(device.code) ? true : device.inUse,
+    })),
   };
 
   await dhis2Client.put(url, settings);
